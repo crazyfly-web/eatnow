@@ -386,6 +386,16 @@
       </label>
     </div>
 
+
+    <!-- 搜尋範圍 -->
+    <div class="filter-card">
+      <div class="filter-label"><span>📡</span> 搜尋範圍</div>
+      <div class="range-selector">
+        <button class="range-btn active" id="range-500" onclick="setRange(500)">500m</button>
+        <button class="range-btn" id="range-1000" onclick="setRange(1000)">1km</button>
+      </div>
+    </div>
+
     <!-- 決定按鈕 -->
     <button id="btn-decide" onclick="startDecision()">
       <div class="dice">🎲</div>
@@ -398,6 +408,7 @@
       <div class="result-card" id="result-card">
         <div id="result-breakfast-tag" class="result-tag" style="display:none">🌅 早餐店</div>
         <div class="result-name" id="result-name">—</div>
+        <div class="result-stars" id="result-stars"></div>
         <div class="result-dist" id="result-dist">📍 —</div>
         <div class="result-actions">
           <button class="btn-action btn-call" id="btn-call" onclick="callRestaurant()">
@@ -495,6 +506,14 @@
         <input class="form-input" id="input-name" type="text" placeholder="請輸入店名" />
       </div>
       <div class="form-group">
+        <label class="form-label">⭐ 喜好星級</label>
+        <div class="star-picker" id="star-picker">
+          <button type="button" onclick="setStar(1)" id="star-1">⭐</button>
+          <button type="button" onclick="setStar(2)" id="star-2">⭐</button>
+          <button type="button" onclick="setStar(3)" id="star-3">⭐</button>
+        </div>
+      </div>
+      <div class="form-group">
         <label class="form-label">📞 電話（選填）</label>
         <input class="form-input" id="input-phone" type="tel" placeholder="02-1234-5678" />
       </div>
@@ -526,6 +545,26 @@
 // ══════════════════════════════════════════
 // Overpass API（OpenStreetMap）完全免費
 // ══════════════════════════════════════════
+
+
+// ══════════════════════════════════════════
+// Range & Star
+// ══════════════════════════════════════════
+let currentRange = 500;
+let currentStars = 0;
+
+function setRange(m) {
+  currentRange = m;
+  document.getElementById('range-500').classList.toggle('active', m === 500);
+  document.getElementById('range-1000').classList.toggle('active', m === 1000);
+}
+
+function setStar(n) {
+  currentStars = (currentStars === n) ? 0 : n; // 再點一次取消
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`star-${i}`).classList.toggle('active', i <= currentStars);
+  }
+}
 
 // ══════════════════════════════════════════
 // IndexedDB
@@ -668,7 +707,7 @@ async function startDecision() {
     const filtered = all.filter(r => {
       const d = distanceM(loc.lat, loc.lng, r.lat, r.lng);
       const breakfastOk = includeBreakfast ? true : !r.isBreakfast;
-      return d <= 500 && breakfastOk;
+      return d <= currentRange && breakfastOk;
     });
 
     if (filtered.length === 0) {
@@ -695,6 +734,7 @@ function showResult() {
 
   document.getElementById('result-name').textContent = r.name;
   document.getElementById('result-dist').textContent = `📍 ${d}`;
+  document.getElementById('result-stars').textContent = r.stars ? '⭐'.repeat(r.stars) : '';
 
   const breakfastTag = document.getElementById('result-breakfast-tag');
   breakfastTag.style.display = r.isBreakfast ? 'inline-flex' : 'none';
@@ -752,6 +792,8 @@ function navigate() {
 let pendingLat = null, pendingLng = null;
 
 function openAddSheet() {
+  currentStars = 0;
+  for (let i = 1; i <= 3; i++) document.getElementById(`star-${i}`).classList.remove('active');
   document.getElementById('add-sheet-overlay').classList.add('open');
   showStep(0);
   startAddFlow();
@@ -845,6 +887,8 @@ function selectPlace(p) {
   document.getElementById('input-name').value = p.name;
   document.getElementById('input-phone').value = p.phone || '';
   document.getElementById('input-breakfast').checked = false;
+  currentStars = 0;
+  for (let i = 1; i <= 3; i++) document.getElementById(`star-${i}`).classList.remove('active');
   showStep(2);
 }
 
@@ -859,6 +903,7 @@ async function saveRestaurant() {
     lat: pendingLat,
     lng: pendingLng,
     phone: document.getElementById('input-phone').value.trim(),
+    stars: currentStars,
     isBreakfast: document.getElementById('input-breakfast').checked,
     createdAt: Date.now()
   };
