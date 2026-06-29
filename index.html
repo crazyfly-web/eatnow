@@ -1014,7 +1014,7 @@ function quickCall(e, phone) {
 }
 
 function rowTap(id) {
-  // 未來可擴充：點開詳細頁
+  openEditSheet(id);
 }
 
 function confirmDelete(id, name, e) {
@@ -1046,7 +1046,141 @@ async function init() {
   renderList();
 }
 
+// ══════════════════════════════════════════
+// Edit Sheet
+// ══════════════════════════════════════════
+let editingId = null;
+let editStars = 0;
+
+function openEditSheet(id) {
+  dbGetAll().then(all => {
+    const r = all.find(x => x.id === id);
+    if (!r) return;
+    editingId = id;
+    editStars = r.stars || 0;
+
+    document.getElementById('edit-input-name').value = r.name;
+    document.getElementById('edit-input-phone').value = r.phone || '';
+    document.getElementById('edit-input-breakfast').checked = r.isBreakfast || false;
+    document.getElementById('edit-coord-text').textContent =
+      `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}`;
+
+    // Set stars
+    for (let i = 1; i <= 3; i++) {
+      document.getElementById(`edit-star-${i}`).classList.toggle('active', i <= editStars);
+    }
+
+    document.getElementById('edit-sheet-overlay').classList.add('open');
+  });
+}
+
+function closeEditSheet() {
+  document.getElementById('edit-sheet-overlay').classList.remove('open');
+  editingId = null;
+}
+
+function handleEditOverlayClick(e) {
+  if (e.target === document.getElementById('edit-sheet-overlay')) closeEditSheet();
+}
+
+function setEditStar(n) {
+  editStars = (editStars === n) ? 0 : n;
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`edit-star-${i}`).classList.toggle('active', i <= editStars);
+  }
+}
+
+async function saveEditRestaurant() {
+  if (!editingId) return;
+  const name = document.getElementById('edit-input-name').value.trim();
+  if (!name) { showToast('請輸入店名'); return; }
+
+  const all = await dbGetAll();
+  const r = all.find(x => x.id === editingId);
+  if (!r) return;
+
+  const updated = {
+    ...r,
+    name,
+    phone: document.getElementById('edit-input-phone').value.trim(),
+    stars: editStars,
+    isBreakfast: document.getElementById('edit-input-breakfast').checked,
+  };
+
+  await dbPut(updated);
+  closeEditSheet();
+  showToast(`已更新「${name}」✅`);
+  renderList();
+}
+
+async function deleteFromEdit() {
+  if (!editingId) return;
+  const all = await dbGetAll();
+  const r = all.find(x => x.id === editingId);
+  if (!r) return;
+  if (!confirm(`確定要刪除「${r.name}」嗎？`)) return;
+  await dbDelete(editingId);
+  closeEditSheet();
+  showToast(`已刪除「${r.name}」`);
+  renderList();
+}
+
 init();
 </script>
+
+<!-- ══════════ SHEET: 編輯餐廳 ══════════ -->
+<div class="sheet-overlay" id="edit-sheet-overlay" onclick="handleEditOverlayClick(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">編輯餐廳</div>
+      <button class="sheet-close" onclick="closeEditSheet()">✕</button>
+    </div>
+    <div class="sheet-body" id="edit-sheet-body">
+      <div class="coord-info">
+        📍 <span id="edit-coord-text"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">🏪 店名</label>
+        <input class="form-input" id="edit-input-name" type="text" placeholder="請輸入店名" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">📞 電話（選填）</label>
+        <input class="form-input" id="edit-input-phone" type="tel" placeholder="02-1234-5678" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">⭐ 喜好星級</label>
+        <div class="star-picker" id="edit-star-picker">
+          <button type="button" onclick="setEditStar(1)" id="edit-star-1">⭐</button>
+          <button type="button" onclick="setEditStar(2)" id="edit-star-2">⭐</button>
+          <button type="button" onclick="setEditStar(3)" id="edit-star-3">⭐</button>
+        </div>
+      </div>
+      <div class="form-toggle-row">
+        <div class="form-toggle-label">
+          <span>🌅</span>
+          <div>
+            <div class="tl-title">這是早餐店</div>
+            <div class="tl-sub">可在決策時篩選早餐</div>
+          </div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="edit-input-breakfast" />
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <button class="btn-primary" onclick="saveEditRestaurant()">
+        ✅ 儲存修改
+      </button>
+      <button onclick="deleteFromEdit()" style="
+        display:flex;align-items:center;justify-content:center;gap:8px;
+        background:none;border:2px solid #fee;color:#e74c3c;
+        padding:14px;border-radius:var(--radius-sm);font-size:15px;
+        font-weight:600;cursor:pointer;width:100%;margin-top:-4px;
+      ">🗑️ 刪除這家店</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
