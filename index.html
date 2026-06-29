@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#FF6B35" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="今天吃什麼" />
+  <link rel="manifest" href="manifest.json" />
+  <title>今天吃什麼</title>
+  <style>
+    /* ── 設計 Token ── */
+    :root {
+      --orange:     #FF6B35;
+      --orange-d:   #E8522A;
+      --orange-l:   #FFF0EB;
+      --green:      #2ECC71;
+      --red:        #E74C3C;
+      --ink:        #1A1A1A;
+      --ink-2:      #555;
+      --ink-3:      #999;
+      --surface:    #FFFFFF;
+      --bg:         #F7F4F1;
+      --border:     #EBEBEB;
+      --radius:     16px;
+      --radius-sm:  10px;
+      --shadow:     0 4px 24px rgba(0,0,0,.08);
+      --shadow-lg:  0 12px 48px rgba(0,0,0,.14);
+      --safe-b:     env(safe-area-inset-bottom, 0px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: -apple-system, 'SF Pro Text', BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Tab Bar ── */
+    #tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      padding-bottom: var(--safe-b);
+      z-index: 100;
+    }
+    .tab-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      gap: 4px; padding: 10px 0;
+      background: none; border: none; cursor: pointer;
+      color: var(--ink-3); font-size: 10px; font-weight: 500;
+      transition: color .2s;
+    }
+    .tab-btn.active { color: var(--orange); }
+    .tab-btn svg { width: 24px; height: 24px; }
+
+    /* ── Pages ── */
+    .page { display: none; flex-direction: column; flex: 1; padding-bottom: calc(60px + var(--safe-b)); }
+    .page.active { display: flex; }
+
+    /* ── Header ── */
+    .page-header {
+      padding: 56px 20px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .page-header h1 { font-size: 28px; font-weight: 700; letter-spacing: -.5px; }
+    .page-header p { font-size: 14px; color: var(--ink-2); margin-top: 4px; }
+
+    /* ── Decision Page ── */
+    #page-decision .scroll-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+    .filter-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 16px 20px; box-shadow: var(--shadow);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .filter-label { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 500; }
+    .filter-label span { font-size: 18px; }
+
+    /* Toggle */
+    .toggle { position: relative; width: 48px; height: 28px; cursor: pointer; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0; background: #ddd; border-radius: 14px;
+      transition: background .2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--orange); }
+    .toggle-thumb {
+      position: absolute; top: 3px; left: 3px;
+      width: 22px; height: 22px; background: white; border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: transform .2s;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(20px); }
+
+    /* Big dice button */
+    #btn-decide {
+      background: linear-gradient(135deg, var(--orange) 0%, var(--orange-d) 100%);
+      border: none; border-radius: 50%; width: 160px; height: 160px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; cursor: pointer; align-self: center; margin: 16px 0;
+      box-shadow: 0 8px 32px rgba(255,107,53,.4);
+      transition: transform .15s, box-shadow .15s;
+    }
+    #btn-decide:active { transform: scale(.94); box-shadow: 0 4px 16px rgba(255,107,53,.3); }
+    #btn-decide .dice { font-size: 52px; }
+    #btn-decide .label { font-size: 16px; font-weight: 700; color: white; }
+    #btn-decide.loading .dice { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hint-text { font-size: 13px; color: var(--ink-3); text-align: center; }
+
+    /* Result Card */
+    #result-section { display: none; }
+    #result-section.show { display: flex; flex-direction: column; gap: 12px; }
+
+    .result-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 24px; box-shadow: var(--shadow-lg);
+      border: 2px solid var(--orange-l);
+      animation: slideIn .3s ease;
+    }
+    @keyframes slideIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: none; } }
+
+    .result-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; font-weight: 600; color: var(--orange);
+      background: var(--orange-l); padding: 4px 10px; border-radius: 20px;
+      margin-bottom: 10px;
+    }
+    .result-name { font-size: 24px; font-weight: 700; letter-spacing: -.3px; margin-bottom: 8px; }
+    .result-dist {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 13px; color: var(--orange); font-weight: 600;
+      background: var(--orange-l); padding: 4px 10px; border-radius: 20px;
+    }
+
+    .result-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+    .btn-action {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 14px; border-radius: var(--radius-sm);
+      border: none; cursor: pointer; font-size: 15px; font-weight: 600;
+      transition: opacity .15s;
+    }
+    .btn-action:active { opacity: .75; }
+    .btn-call { background: #E8F8EE; color: #1a8a44; }
+    .btn-call.disabled { background: var(--bg); color: var(--ink-3); cursor: default; }
+    .btn-nav  { background: #E8F0FF; color: #1a44c4; }
+
+    .btn-next {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      background: none; border: 2px solid var(--orange);
+      color: var(--orange); padding: 14px; border-radius: var(--radius-sm);
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .btn-next:active { background: var(--orange); color: white; }
+
+    /* Record button */
+    #btn-record {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--surface); border: 2px solid var(--orange-l);
+      color: var(--orange); padding: 16px; border-radius: var(--radius);
+      font-size: 16px; font-weight: 600; cursor: pointer;
+      transition: background .15s;
+      box-shadow: var(--shadow);
+    }
+    #btn-record:active { background: var(--orange-l); }
+
+    /* ── Pocket List Page ── */
+    #page-list .scroll-area { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+
+    .search-bar {
+      margin: 12px 20px 0;
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 14px;
+    }
+    .search-bar input {
+      flex: 1; border: none; outline: none; font-size: 15px;
+      background: transparent; color: var(--ink);
+    }
+    .search-bar svg { color: var(--ink-3); flex-shrink: 0; }
+
+    .restaurant-row {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 16px; display: flex; align-items: center; gap: 14px;
+      box-shadow: var(--shadow); cursor: pointer;
+      transition: transform .15s;
+      position: relative;
+    }
+    .restaurant-row:active { transform: scale(.98); }
+    .row-dist-badge {
+      width: 52px; height: 52px; flex-shrink: 0;
+      background: var(--orange-l); border-radius: 12px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px;
+    }
+    .row-dist-badge.nearby { background: var(--orange-l); }
+    .row-dist-badge.far { background: #f0f0f0; }
+    .row-dist-num { font-size: 11px; font-weight: 700; color: var(--orange); }
+    .row-dist-badge.far .row-dist-num { color: var(--ink-3); }
+    .row-info { flex: 1; min-width: 0; }
+    .row-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row-meta { font-size: 12px; color: var(--ink-3); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+    .breakfast-tag {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 600; color: var(--orange);
+      background: var(--orange-l); padding: 2px 7px; border-radius: 10px;
+    }
+    .row-call-btn {
+      width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer;
+      background: #E8F8EE; color: #1a8a44;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      transition: background .15s;
+    }
+    .row-call-btn:active { background: #c6f0d8; }
+
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px; padding: 40px;
+      color: var(--ink-3); text-align: center;
+    }
+    .empty-state .icon { font-size: 56px; }
+    .empty-state h3 { font-size: 18px; font-weight: 600; color: var(--ink-2); }
+    .empty-state p { font-size: 14px; line-height: 1.6; }
+
+    .list-count { font-size: 12px; color: var(--ink-3); text-align: center; padding: 8px 0 4px; }
+
+    /* ── Sheet / Modal ── */
+    .sheet-overlay {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.4); backdrop-filter: blur(4px);
+      align-items: flex-end;
+    }
+    .sheet-overlay.open { display: flex; animation: fadeIn .2s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .sheet {
+      background: var(--surface); border-radius: 24px 24px 0 0;
+      width: 100%; max-height: 92dvh; overflow-y: auto;
+      padding: 0 0 calc(24px + var(--safe-b));
+      animation: slideUp .3s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: none; } }
+
+    .sheet-handle {
+      width: 36px; height: 4px; background: #ddd; border-radius: 2px;
+      margin: 12px auto 0;
+    }
+    .sheet-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sheet-title { font-size: 17px; font-weight: 700; }
+    .sheet-close {
+      width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+      background: #f0f0f0; color: var(--ink-2);
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+    }
+
+    .sheet-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+    /* Step indicators */
+    .step-indicator {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 12px 0;
+    }
+    .step-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--border);
+      transition: background .2s, width .2s;
+    }
+    .step-dot.active { background: var(--orange); width: 24px; border-radius: 4px; }
+
+    /* Loading state in sheet */
+    .sheet-loading {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; padding: 60px 20px;
+    }
+    .spinner {
+      width: 48px; height: 48px; border: 3px solid var(--orange-l);
+      border-top-color: var(--orange); border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    /* Place list */
+    .place-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px; background: var(--bg); border-radius: var(--radius-sm);
+      cursor: pointer; transition: background .15s;
+      border: 2px solid transparent;
+    }
+    .place-item:active, .place-item:hover { background: var(--orange-l); border-color: var(--orange); }
+    .place-icon {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--orange-l); display: flex; align-items: center; justify-content: center;
+      font-size: 20px; flex-shrink: 0;
+    }
+    .place-name { font-size: 15px; font-weight: 600; }
+    .place-sub  { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+    .manual-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px; background: var(--bg); border-radius: var(--radius-sm);
+      cursor: pointer; transition: background .15s;
+      border: 2px dashed var(--border);
+    }
+    .manual-item:active { background: var(--orange-l); border-color: var(--orange); }
+
+    /* Form */
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-label { font-size: 13px; font-weight: 600; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+    .form-input {
+      padding: 14px; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 16px; color: var(--ink);
+      outline: none; transition: border-color .15s;
+      -webkit-appearance: none;
+    }
+    .form-input:focus { border-color: var(--orange); }
+
+    .form-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; background: var(--bg); border-radius: var(--radius-sm);
+    }
+    .form-toggle-label { display: flex; align-items: center; gap: 10px; }
+    .form-toggle-label span { font-size: 20px; }
+    .form-toggle-label div { }
+    .form-toggle-label .tl-title { font-size: 15px; font-weight: 600; }
+    .form-toggle-label .tl-sub   { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+    .coord-info {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: var(--orange-l);
+      border-radius: var(--radius-sm); font-size: 13px; color: var(--orange-d);
+      font-weight: 500;
+    }
+
+    .btn-primary {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: linear-gradient(135deg, var(--orange) 0%, var(--orange-d) 100%);
+      color: white; border: none; border-radius: var(--radius-sm);
+      padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(255,107,53,.35);
+      transition: opacity .15s, transform .1s;
+    }
+    .btn-primary:active { opacity: .85; transform: scale(.98); }
+    .btn-primary:disabled { background: #ccc; box-shadow: none; cursor: default; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: calc(80px + var(--safe-b)); left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--ink); color: white; padding: 12px 20px; border-radius: 20px;
+      font-size: 14px; font-weight: 500; white-space: nowrap;
+      opacity: 0; transition: opacity .2s, transform .2s; z-index: 300; pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Swipe hint on rows */
+    .swipe-hint { font-size: 11px; color: var(--ink-3); text-align: center; padding: 4px 0; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════ PAGE: 今天吃什麼 ══════════ -->
+<div id="page-decision" class="page active">
+  <div class="page-header">
+    <h1>今天吃什麼？</h1>
+    <p>從口袋名單隨機抽選附近 500m 的店家</p>
+  </div>
+  <div class="scroll-area">
+    <!-- 篩選 -->
+    <div class="filter-card">
+      <div class="filter-label"><span>🌅</span> 包含早餐店</div>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-breakfast" checked />
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <!-- 決定按鈕 -->
+    <button id="btn-decide" onclick="startDecision()">
+      <div class="dice">🎲</div>
+      <div class="label">決定！</div>
+    </button>
+    <p class="hint-text">點擊搜尋 500 公尺內的收藏店家</p>
+
+    <!-- 結果卡片 -->
+    <div id="result-section">
+      <div class="result-card" id="result-card">
+        <div id="result-breakfast-tag" class="result-tag" style="display:none">🌅 早餐店</div>
+        <div class="result-name" id="result-name">—</div>
+        <div class="result-dist" id="result-dist">📍 —</div>
+        <div class="result-actions">
+          <button class="btn-action btn-call" id="btn-call" onclick="callRestaurant()">
+            📞 <span id="call-label">撥打電話</span>
+          </button>
+          <button class="btn-action btn-nav" onclick="navigate()">
+            🗺️ 導航前往
+          </button>
+          <button class="btn-next" onclick="nextRestaurant()">
+            換一家 →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 踩點按鈕 -->
+    <button id="btn-record" onclick="openAddSheet()">
+      📍 記錄當前位置
+    </button>
+  </div>
+</div>
+
+<!-- ══════════ PAGE: 口袋名單 ══════════ -->
+<div id="page-list" class="page">
+  <div class="page-header">
+    <h1>口袋名單</h1>
+    <p>長按可刪除</p>
+  </div>
+  <div class="search-bar">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="text" id="search-input" placeholder="搜尋店名..." oninput="renderList()" />
+  </div>
+  <div id="list-count" class="list-count"></div>
+  <div class="scroll-area">
+    <div id="restaurant-list"></div>
+    <div id="empty-state" class="empty-state" style="display:none">
+      <div class="icon">🍽️</div>
+      <h3>口袋名單是空的</h3>
+      <p>點擊首頁的「記錄當前位置」<br>開始收藏喜愛的店家！</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ TAB BAR ══════════ -->
+<nav id="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('decision')" id="tab-decision">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="9" height="9" rx="1"/><rect x="13" y="2" width="9" height="9" rx="1"/><rect x="2" y="13" width="9" height="9" rx="1"/><rect x="13" y="13" width="9" height="9" rx="1"/></svg>
+    今天吃什麼
+  </button>
+  <button class="tab-btn" onclick="switchTab('list')" id="tab-list">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+    口袋名單
+  </button>
+</nav>
+
+<!-- ══════════ SHEET: 新增餐廳 ══════════ -->
+<div class="sheet-overlay" id="add-sheet-overlay" onclick="handleOverlayClick(event)">
+  <div class="sheet" id="add-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" id="sheet-title">記錄當前位置</div>
+      <button class="sheet-close" onclick="closeAddSheet()">✕</button>
+    </div>
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot-0"></div>
+      <div class="step-dot" id="dot-1"></div>
+      <div class="step-dot" id="dot-2"></div>
+    </div>
+
+    <!-- Step 0: Loading -->
+    <div id="step-0" class="sheet-body">
+      <div class="sheet-loading">
+        <div class="spinner"></div>
+        <div style="text-align:center">
+          <div style="font-size:16px;font-weight:600">正在定位中…</div>
+          <div style="font-size:13px;color:var(--ink-3);margin-top:6px">搜尋您周圍的店家</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 1: Pick place -->
+    <div id="step-1" class="sheet-body" style="display:none">
+      <div style="font-size:16px;font-weight:700">請問您是在這家店用餐嗎？</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-top:-8px">根據您目前的位置，找到以下可能的店家</div>
+      <div id="places-list" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+
+    <!-- Step 2: Edit details -->
+    <div id="step-2" class="sheet-body" style="display:none">
+      <div id="coord-display" class="coord-info">
+        📍 <span id="coord-text">定位中…</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">🏪 店名</label>
+        <input class="form-input" id="input-name" type="text" placeholder="請輸入店名" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">📞 電話（選填）</label>
+        <input class="form-input" id="input-phone" type="tel" placeholder="02-1234-5678" />
+      </div>
+      <div class="form-toggle-row">
+        <div class="form-toggle-label">
+          <span>🌅</span>
+          <div>
+            <div class="tl-title">這是早餐店</div>
+            <div class="tl-sub">可在決策時篩選早餐</div>
+          </div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="input-breakfast" />
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <button class="btn-primary" id="btn-save" onclick="saveRestaurant()">
+        ✅ 儲存餐廳
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// CONFIG — 填入你的 Google Places API Key
+// ══════════════════════════════════════════
+const GOOGLE_API_KEY = 'YOUR_GOOGLE_PLACES_API_KEY';
+
+// ══════════════════════════════════════════
+// IndexedDB
+// ══════════════════════════════════════════
+let db;
+const DB_NAME = 'eatnow', DB_VER = 1, STORE = 'restaurants';
+
+function initDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains(STORE)) {
+        d.createObjectStore(STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; res(); };
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbGetAll() {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbPut(record) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const req = tx.objectStore(STORE).put(record);
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbDelete(id) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const req = tx.objectStore(STORE).delete(id);
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+}
+
+// ══════════════════════════════════════════
+// Location
+// ══════════════════════════════════════════
+let currentLocation = null;
+
+function getLocation() {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) { rej(new Error('瀏覽器不支援定位')); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => {
+        currentLocation = { lat: p.coords.latitude, lng: p.coords.longitude };
+        res(currentLocation);
+      },
+      e => rej(new Error('無法取得位置，請確認已允許定位權限')),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
+
+function distanceM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function formatDist(m) {
+  return m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`;
+}
+
+// ══════════════════════════════════════════
+// Google Places Nearby Search
+// ══════════════════════════════════════════
+async function searchNearbyPlaces(lat, lng) {
+  if (!GOOGLE_API_KEY || GOOGLE_API_KEY === 'YOUR_GOOGLE_PLACES_API_KEY') {
+    return []; // API Key 未設定，回傳空陣列
+  }
+  try {
+    const url = `https://places.googleapis.com/v1/places:searchNearby`;
+    const body = {
+      includedTypes: ['restaurant', 'food', 'cafe', 'bakery', 'meal_takeaway'],
+      maxResultCount: 8,
+      locationRestriction: {
+        circle: { center: { latitude: lat, longitude: lng }, radius: 100.0 }
+      }
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_API_KEY,
+        'X-Goog-FieldMask': 'places.displayName,places.location,places.nationalPhoneNumber,places.formattedAddress'
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!data.places) return [];
+    return data.places.map(p => ({
+      name: p.displayName?.text || '未知店家',
+      lat: p.location?.latitude,
+      lng: p.location?.longitude,
+      phone: p.nationalPhoneNumber || '',
+      address: p.formattedAddress || ''
+    })).filter(p => {
+      // 硬性距離過濾 200m
+      const d = distanceM(lat, lng, p.lat, p.lng);
+      return d <= 200;
+    }).sort((a, b) => distanceM(lat, lng, a.lat, a.lng) - distanceM(lat, lng, b.lat, b.lng));
+  } catch(e) {
+    return [];
+  }
+}
+
+// ══════════════════════════════════════════
+// Tab
+// ══════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`page-${name === 'decision' ? 'decision' : 'list'}`).classList.add('active');
+  document.getElementById(`tab-${name}`).classList.add('active');
+  if (name === 'list') renderList();
+}
+
+// ══════════════════════════════════════════
+// Decision Engine
+// ══════════════════════════════════════════
+let shuffledList = [], currentIdx = 0;
+
+async function startDecision() {
+  const btn = document.getElementById('btn-decide');
+  btn.classList.add('loading');
+
+  try {
+    const loc = await getLocation();
+    const all = await dbGetAll();
+    const includeBreakfast = document.getElementById('toggle-breakfast').checked;
+
+    const filtered = all.filter(r => {
+      const d = distanceM(loc.lat, loc.lng, r.lat, r.lng);
+      const breakfastOk = includeBreakfast ? true : !r.isBreakfast;
+      return d <= 500 && breakfastOk;
+    });
+
+    if (filtered.length === 0) {
+      showToast('500 公尺內沒有收藏店家，快去踩點！');
+      btn.classList.remove('loading');
+      return;
+    }
+
+    // Shuffle
+    shuffledList = filtered.sort(() => Math.random() - .5);
+    currentIdx = 0;
+    showResult();
+  } catch(e) {
+    showToast(e.message);
+  }
+
+  btn.classList.remove('loading');
+}
+
+function showResult() {
+  const r = shuffledList[currentIdx];
+  const loc = currentLocation;
+  const d = loc ? formatDist(distanceM(loc.lat, loc.lng, r.lat, r.lng)) : '—';
+
+  document.getElementById('result-name').textContent = r.name;
+  document.getElementById('result-dist').textContent = `📍 ${d}`;
+
+  const breakfastTag = document.getElementById('result-breakfast-tag');
+  breakfastTag.style.display = r.isBreakfast ? 'inline-flex' : 'none';
+
+  const callBtn = document.getElementById('btn-call');
+  const callLabel = document.getElementById('call-label');
+  if (r.phone) {
+    callBtn.classList.remove('disabled');
+    callLabel.textContent = r.phone;
+  } else {
+    callBtn.classList.add('disabled');
+    callLabel.textContent = '尚未記錄電話';
+  }
+
+  const section = document.getElementById('result-section');
+  section.classList.add('show');
+
+  // Re-trigger animation
+  const card = document.getElementById('result-card');
+  card.style.animation = 'none';
+  card.offsetHeight;
+  card.style.animation = '';
+}
+
+function nextRestaurant() {
+  if (currentIdx + 1 >= shuffledList.length) {
+    showToast('附近的收藏店家都看完了！');
+    return;
+  }
+  currentIdx++;
+  showResult();
+}
+
+function callRestaurant() {
+  const r = shuffledList[currentIdx];
+  if (!r.phone) return;
+  window.location.href = `tel:${r.phone.replace(/\s|-/g, '')}`;
+}
+
+function navigate() {
+  const r = shuffledList[currentIdx];
+  const name = encodeURIComponent(r.name);
+  // 嘗試 Google Maps，fallback Apple Maps
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad/.test(ua)) {
+    window.open(`maps://maps.apple.com/?daddr=${r.lat},${r.lng}&dirflg=w`, '_blank');
+  } else {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&destination_place_name=${name}`, '_blank');
+  }
+}
+
+// ══════════════════════════════════════════
+// Add Sheet
+// ══════════════════════════════════════════
+let pendingLat = null, pendingLng = null;
+
+function openAddSheet() {
+  document.getElementById('add-sheet-overlay').classList.add('open');
+  showStep(0);
+  startAddFlow();
+}
+
+function closeAddSheet() {
+  document.getElementById('add-sheet-overlay').classList.remove('open');
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('add-sheet-overlay')) closeAddSheet();
+}
+
+function setStepDots(step) {
+  for (let i = 0; i < 3; i++) {
+    document.getElementById(`dot-${i}`).classList.toggle('active', i === step);
+  }
+}
+
+function showStep(n) {
+  [0, 1, 2].forEach(i => {
+    document.getElementById(`step-${i}`).style.display = i === n ? 'flex' : 'none';
+  });
+  setStepDots(n);
+}
+
+async function startAddFlow() {
+  showStep(0);
+  try {
+    const loc = await getLocation();
+    pendingLat = loc.lat;
+    pendingLng = loc.lng;
+    document.getElementById('coord-text').textContent =
+      `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+
+    const places = await searchNearbyPlaces(loc.lat, loc.lng);
+    renderPlacesList(places);
+    showStep(1);
+  } catch(e) {
+    // GPS 失敗仍可手動輸入
+    pendingLat = null; pendingLng = null;
+    renderPlacesList([]);
+    showStep(1);
+  }
+}
+
+function renderPlacesList(places) {
+  const container = document.getElementById('places-list');
+  container.innerHTML = '';
+
+  if (places.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:24px;color:var(--ink-3)">
+        <div style="font-size:32px;margin-bottom:8px">🔍</div>
+        <div style="font-size:14px">附近沒有找到店家資料</div>
+      </div>`;
+  } else {
+    places.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'place-item';
+      el.innerHTML = `
+        <div class="place-icon">🍜</div>
+        <div>
+          <div class="place-name">${p.name}</div>
+          <div class="place-sub">${p.phone || p.address || '點擊選擇此店家'}</div>
+        </div>`;
+      el.onclick = () => selectPlace(p);
+      container.appendChild(el);
+    });
+  }
+
+  // 手動輸入選項
+  const manual = document.createElement('div');
+  manual.className = 'manual-item';
+  manual.innerHTML = `
+    <div class="place-icon">✏️</div>
+    <div>
+      <div class="place-name">手動輸入</div>
+      <div class="place-sub">以上都不是，我自己輸入店名</div>
+    </div>`;
+  manual.onclick = () => {
+    document.getElementById('input-name').value = '';
+    document.getElementById('input-phone').value = '';
+    document.getElementById('input-breakfast').checked = false;
+    showStep(2);
+  };
+  container.appendChild(manual);
+}
+
+function selectPlace(p) {
+  document.getElementById('input-name').value = p.name;
+  document.getElementById('input-phone').value = p.phone || '';
+  document.getElementById('input-breakfast').checked = false;
+  showStep(2);
+}
+
+async function saveRestaurant() {
+  const name = document.getElementById('input-name').value.trim();
+  if (!name) { showToast('請輸入店名'); return; }
+  if (pendingLat === null) { showToast('無法取得位置，請重試'); return; }
+
+  const record = {
+    id: Date.now().toString(),
+    name,
+    lat: pendingLat,
+    lng: pendingLng,
+    phone: document.getElementById('input-phone').value.trim(),
+    isBreakfast: document.getElementById('input-breakfast').checked,
+    createdAt: Date.now()
+  };
+
+  await dbPut(record);
+  closeAddSheet();
+  showToast(`已儲存「${name}」✅`);
+  renderList();
+}
+
+// ══════════════════════════════════════════
+// List Page
+// ══════════════════════════════════════════
+async function renderList() {
+  const query = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
+  let all = await dbGetAll();
+
+  if (query) all = all.filter(r => r.name.toLowerCase().includes(query));
+
+  // 依距離排序
+  if (currentLocation) {
+    all.sort((a, b) =>
+      distanceM(currentLocation.lat, currentLocation.lng, a.lat, a.lng) -
+      distanceM(currentLocation.lat, currentLocation.lng, b.lat, b.lng)
+    );
+  }
+
+  const container = document.getElementById('restaurant-list');
+  const emptyState = document.getElementById('empty-state');
+  const countEl = document.getElementById('list-count');
+
+  if (all.length === 0) {
+    container.innerHTML = '';
+    emptyState.style.display = 'flex';
+    countEl.textContent = '';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  countEl.textContent = `共 ${all.length} 家店`;
+
+  container.innerHTML = all.map(r => {
+    const d = currentLocation
+      ? distanceM(currentLocation.lat, currentLocation.lng, r.lat, r.lng)
+      : null;
+    const distLabel = d !== null ? formatDist(d) : '--';
+    const nearby = d !== null && d <= 500;
+
+    return `
+      <div class="restaurant-row" oncontextmenu="confirmDelete('${r.id}','${r.name}',event)" onclick="rowTap('${r.id}')">
+        <div class="row-dist-badge ${nearby ? 'nearby' : 'far'}">
+          <div class="row-dist-num">${distLabel}</div>
+          <div style="font-size:10px">${nearby ? '📍' : '🗺️'}</div>
+        </div>
+        <div class="row-info">
+          <div class="row-name">${r.name}${r.isBreakfast ? ' <span class="breakfast-tag">🌅 早</span>' : ''}</div>
+          <div class="row-meta">${r.phone ? `📞 ${r.phone}` : '尚未記錄電話'}</div>
+        </div>
+        ${r.phone ? `<button class="row-call-btn" onclick="quickCall(event,'${r.phone}')">📞</button>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function quickCall(e, phone) {
+  e.stopPropagation();
+  window.location.href = `tel:${phone.replace(/\s|-/g, '')}`;
+}
+
+function rowTap(id) {
+  // 未來可擴充：點開詳細頁
+}
+
+function confirmDelete(id, name, e) {
+  e.preventDefault();
+  if (confirm(`確定要刪除「${name}」嗎？`)) {
+    dbDelete(id).then(() => { showToast(`已刪除「${name}」`); renderList(); });
+  }
+}
+
+// ══════════════════════════════════════════
+// Toast
+// ══════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ══════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════
+async function init() {
+  await initDB();
+  // 背景取得位置供排序用
+  getLocation().catch(() => {});
+  renderList();
+}
+
+init();
+</script>
+</body>
+</html>
