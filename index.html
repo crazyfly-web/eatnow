@@ -365,6 +365,44 @@
 
     /* Swipe hint on rows */
     .swipe-hint { font-size: 11px; color: var(--ink-3); text-align: center; padding: 4px 0; }
+
+    /* Range Selector */
+    .range-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 16px 20px; box-shadow: var(--shadow);
+    }
+    .range-card-label {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 15px; font-weight: 500; margin-bottom: 12px;
+    }
+    .range-card-label span { font-size: 18px; }
+    .range-selector { display: flex; gap: 8px; }
+    .range-btn {
+      flex: 1; padding: 12px 8px; border-radius: var(--radius-sm);
+      border: 2px solid var(--border); background: var(--bg);
+      font-size: 15px; font-weight: 700; cursor: pointer; color: var(--ink-2);
+      transition: border-color .15s, background .15s, color .15s;
+      min-height: 48px; -webkit-appearance: none; appearance: none;
+    }
+    .range-btn.active {
+      border-color: var(--orange); background: var(--orange-l); color: var(--orange);
+    }
+    .range-btn:active { opacity: .75; }
+
+    /* Star Picker */
+    .star-picker { display: flex; gap: 4px; }
+    .star-picker button {
+      background: none; border: none; cursor: pointer;
+      font-size: 32px; padding: 4px 8px; line-height: 1;
+      opacity: .25; transition: opacity .15s, transform .1s;
+      -webkit-appearance: none; min-height: 48px;
+    }
+    .star-picker button.active { opacity: 1; }
+    .star-picker button:active { transform: scale(1.25); }
+
+    /* Stars in list & result */
+    .row-stars { font-size: 13px; margin-right: 4px; }
+    .result-stars { font-size: 22px; margin-bottom: 8px; letter-spacing: 2px; min-height: 24px; }
   </style>
 </head>
 <body>
@@ -388,11 +426,11 @@
 
 
     <!-- 搜尋範圍 -->
-    <div class="filter-card">
-      <div class="filter-label"><span>📡</span> 搜尋範圍</div>
+    <div class="range-card">
+      <div class="range-card-label"><span>📡</span> 搜尋範圍</div>
       <div class="range-selector">
-        <button class="range-btn active" id="range-500" onclick="setRange(500)">500m</button>
-        <button class="range-btn" id="range-1000" onclick="setRange(1000)">1km</button>
+        <button class="range-btn active" id="range-500" onclick="setRange(500)">📍 500m</button>
+        <button class="range-btn" id="range-1000" onclick="setRange(1000)">🗺️ 1km</button>
       </div>
     </div>
 
