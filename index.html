@@ -462,10 +462,20 @@
       </div>
     </div>
 
-    <!-- 踩點按鈕 -->
-    <button id="btn-record" onclick="openAddSheet()">
-      📍 記錄當前位置
-    </button>
+    <!-- 新增店家按鈕群 -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button id="btn-record" onclick="openAddSheet('gps')">
+        📍 記錄當前位置
+      </button>
+      <button onclick="openAddSheet('search')" style="
+        display:flex;align-items:center;justify-content:center;gap:8px;
+        background:var(--surface);border:2px solid var(--orange-l);
+        color:var(--orange);padding:14px;border-radius:var(--radius);
+        font-size:15px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);
+      ">
+        🔍 搜尋店家名稱新增
+      </button>
+    </div>
   </div>
 </div>
 
@@ -507,7 +517,7 @@
   <div class="sheet" id="add-sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-header">
-      <div class="sheet-title" id="sheet-title">記錄當前位置</div>
+      <div class="sheet-title" id="sheet-title">新增店家</div>
       <button class="sheet-close" onclick="closeAddSheet()">✕</button>
     </div>
     <div class="step-indicator">
@@ -516,13 +526,37 @@
       <div class="step-dot" id="dot-2"></div>
     </div>
 
-    <!-- Step 0: Loading -->
-    <div id="step-0" class="sheet-body">
+    <!-- Step 0a: GPS Loading -->
+    <div id="step-0-gps" class="sheet-body">
       <div class="sheet-loading">
         <div class="spinner"></div>
         <div style="text-align:center">
           <div style="font-size:16px;font-weight:600">正在定位中…</div>
           <div style="font-size:13px;color:var(--ink-3);margin-top:6px">搜尋您周圍的店家</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 0b: Search by name -->
+    <div id="step-0-search" class="sheet-body" style="display:none">
+      <div style="font-size:16px;font-weight:700">搜尋店家</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-top:-8px">輸入店名或地址，從結果選取正確位置</div>
+      <div style="display:flex;gap:8px">
+        <input class="form-input" id="place-search-input" type="text"
+          placeholder="例如：大田鴨肉飯 花蓮"
+          style="flex:1"
+          onkeydown="if(event.key==='Enter')doPlaceSearch()" />
+        <button onclick="doPlaceSearch()" style="
+          background:var(--orange);color:white;border:none;
+          border-radius:var(--radius-sm);padding:0 16px;
+          font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;
+          min-height:48px;
+        ">搜尋</button>
+      </div>
+      <div id="place-search-results" style="display:flex;flex-direction:column;gap:10px">
+        <div style="text-align:center;padding:24px;color:var(--ink-3)">
+          <div style="font-size:32px;margin-bottom:8px">🔍</div>
+          <div style="font-size:14px">輸入關鍵字後點搜尋</div>
         </div>
       </div>
     </div>
@@ -580,6 +614,60 @@
 <div id="toast"></div>
 
 <script>
+
+// ══════════════════════════════════════════
+// Nominatim 店家搜尋（OpenStreetMap，免費）
+// ══════════════════════════════════════════
+async function doPlaceSearch() {
+  const q = document.getElementById('place-search-input').value.trim();
+  if (!q) return;
+  const container = document.getElementById('place-search-results');
+  container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:14px">搜尋中…</div></div>`;
+
+  try {
+    // 用 Nominatim 搜尋，限制台灣地區，優先回傳餐廳/店家
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&countrycodes=tw&addressdetails=1&accept-language=zh-TW,zh`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'zh-TW,zh' } });
+    const data = await res.json();
+
+    if (!data.length) {
+      container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)"><div style="font-size:32px;margin-bottom:8px">😅</div><div style="font-size:14px">找不到「${q}」，試試加上縣市名稱</div></div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    data.forEach(item => {
+      const name = item.namedetails?.name || item.display_name.split(',')[0];
+      const addr = item.display_name;
+      const lat = parseFloat(item.lat);
+      const lng = parseFloat(item.lon);
+
+      const el = document.createElement('div');
+      el.className = 'place-item';
+      el.innerHTML = `
+        <div class="place-icon">📍</div>
+        <div style="min-width:0">
+          <div class="place-name">${name}</div>
+          <div class="place-sub" style="white-space:normal;line-height:1.4">${addr}</div>
+        </div>`;
+      el.onclick = () => {
+        pendingLat = lat;
+        pendingLng = lng;
+        document.getElementById('coord-text').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        document.getElementById('input-name').value = name;
+        document.getElementById('input-phone').value = '';
+        document.getElementById('input-breakfast').checked = false;
+        currentStars = 0;
+        for (let i = 1; i <= 3; i++) document.getElementById(`star-${i}`).classList.remove('active');
+        showAddStep('edit');
+      };
+      container.appendChild(el);
+    });
+  } catch(e) {
+    container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">搜尋失敗，請稍後再試</div>`;
+  }
+}
+
 // ══════════════════════════════════════════
 // Overpass API（OpenStreetMap）完全免費
 // ══════════════════════════════════════════
@@ -832,12 +920,22 @@ function navigate() {
 // ══════════════════════════════════════════
 let pendingLat = null, pendingLng = null;
 
-function openAddSheet() {
+let addMode = 'gps';
+
+function openAddSheet(mode = 'gps') {
+  addMode = mode;
   currentStars = 0;
   for (let i = 1; i <= 3; i++) document.getElementById(`star-${i}`).classList.remove('active');
   document.getElementById('add-sheet-overlay').classList.add('open');
-  showStep(0);
-  startAddFlow();
+  document.getElementById('sheet-title').textContent = mode === 'gps' ? '記錄當前位置' : '搜尋店家新增';
+
+  if (mode === 'gps') {
+    showAddStep('gps');
+    startAddFlow();
+  } else {
+    showAddStep('search');
+    setTimeout(() => document.getElementById('place-search-input').focus(), 300);
+  }
 }
 
 function closeAddSheet() {
@@ -854,15 +952,28 @@ function setStepDots(step) {
   }
 }
 
-function showStep(n) {
-  [0, 1, 2].forEach(i => {
-    document.getElementById(`step-${i}`).style.display = i === n ? 'flex' : 'none';
+function showAddStep(s) {
+  // s: 'gps' | 'search' | 'pick' | 'edit'
+  const allSteps = ['step-0-gps', 'step-0-search', 'step-1', 'step-2'];
+  allSteps.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
   });
-  setStepDots(n);
+  const map = { gps: 'step-0-gps', search: 'step-0-search', pick: 'step-1', edit: 'step-2' };
+  const el = document.getElementById(map[s]);
+  if (el) el.style.display = 'flex';
+  const dotMap = { gps: 0, search: 0, pick: 1, edit: 2 };
+  setStepDots(dotMap[s] ?? 0);
+}
+
+// Keep old showStep for backwards compat (maps to new)
+function showStep(n) {
+  const steps = ['gps', 'gps', 'pick', 'edit'];
+  showAddStep(steps[n] || 'gps');
 }
 
 async function startAddFlow() {
-  showStep(0);
+  showAddStep('gps');
   try {
     const loc = await getLocation();
     pendingLat = loc.lat;
@@ -872,12 +983,11 @@ async function startAddFlow() {
 
     const places = await searchNearbyPlaces(loc.lat, loc.lng);
     renderPlacesList(places);
-    showStep(1);
+    showAddStep('pick');
   } catch(e) {
-    // GPS 失敗仍可手動輸入
     pendingLat = null; pendingLng = null;
     renderPlacesList([]);
-    showStep(1);
+    showAddStep('pick');
   }
 }
 
@@ -919,7 +1029,7 @@ function renderPlacesList(places) {
     document.getElementById('input-name').value = '';
     document.getElementById('input-phone').value = '';
     document.getElementById('input-breakfast').checked = false;
-    showStep(2);
+    showAddStep('edit');
   };
   container.appendChild(manual);
 }
@@ -930,7 +1040,7 @@ function selectPlace(p) {
   document.getElementById('input-breakfast').checked = false;
   currentStars = 0;
   for (let i = 1; i <= 3; i++) document.getElementById(`star-${i}`).classList.remove('active');
-  showStep(2);
+  showAddStep('edit');
 }
 
 async function saveRestaurant() {
