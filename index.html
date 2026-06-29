@@ -411,7 +411,7 @@
 <div id="page-decision" class="page active">
   <div class="page-header">
     <h1>今天吃什麼？</h1>
-    <p>從口袋名單隨機抽選附近 500m 的店家</p>
+    <p id="subtitle-range">從口袋名單隨機抽選附近 500m 的店家</p>
   </div>
   <div class="scroll-area">
     <!-- 篩選 -->
@@ -439,7 +439,7 @@
       <div class="dice">🎲</div>
       <div class="label">決定！</div>
     </button>
-    <p class="hint-text">點擊搜尋 500 公尺內的收藏店家</p>
+    <p class="hint-text" id="hint-range">點擊搜尋 500 公尺內的收藏店家</p>
 
     <!-- 結果卡片 -->
     <div id="result-section">
@@ -595,6 +595,9 @@ function setRange(m) {
   currentRange = m;
   document.getElementById('range-500').classList.toggle('active', m === 500);
   document.getElementById('range-1000').classList.toggle('active', m === 1000);
+  const label = m === 500 ? '500m' : '1km';
+  document.getElementById('subtitle-range').textContent = `從口袋名單隨機抽選附近 ${label} 的店家`;
+  document.getElementById('hint-range').textContent = `點擊搜尋 ${label} 內的收藏店家`;
 }
 
 function setStar(n) {
@@ -749,7 +752,7 @@ async function startDecision() {
     });
 
     if (filtered.length === 0) {
-      showToast('500 公尺內沒有收藏店家，快去踩點！');
+      showToast(`${currentRange >= 1000 ? '1km' : '500m'} 內沒有收藏店家，快去踩點！`);
       btn.classList.remove('loading');
       return;
     }
