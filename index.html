@@ -343,6 +343,16 @@
       font-weight: 500;
     }
 
+    .location-map-toggle {
+      width:100%; padding:12px 14px; border:1.5px solid var(--orange);
+      border-radius:var(--radius-sm); background:var(--surface); color:var(--orange);
+      font-size:14px; font-weight:700; cursor:pointer;
+    }
+    .location-map-panel { display:none; flex-direction:column; gap:10px; }
+    #location-map { height:250px; border-radius:var(--radius-sm); overflow:hidden; border:1px solid var(--border); z-index:1; }
+    .location-map-note { font-size:12px; color:var(--ink-3); line-height:1.5; }
+    .location-map-reset { align-self:flex-start; background:none; border:0; color:var(--orange-d); font-size:13px; font-weight:600; padding:4px 0; cursor:pointer; }
+
     .btn-primary {
       display: flex; align-items: center; justify-content: center; gap: 8px;
       background: linear-gradient(135deg, var(--orange) 0%, var(--orange-d) 100%);
@@ -573,6 +583,12 @@
       <div id="coord-display" class="coord-info">
         📍 <span id="coord-text">定位中…</span>
       </div>
+      <button class="location-map-toggle" id="location-map-toggle" type="button" onclick="toggleLocationMap()">🗺️ 在地圖上微調餐廳位置</button>
+      <div class="location-map-panel" id="location-map-panel">
+        <div class="location-map-note">把地圖移到店家入口，再點一下地圖放置標記。座標只保存在這台裝置的口袋名單中。地圖由 OpenStreetMap 提供。</div>
+        <div id="location-map" role="application" aria-label="選擇餐廳位置地圖"></div>
+        <button class="location-map-reset" type="button" onclick="resetLocationPin()">↩ 回到選取的原始位置</button>
+      </div>
       <div class="form-group">
         <label class="form-label">🏪 店名</label>
         <input class="form-input" id="input-name" type="text" placeholder="請輸入店名" />
@@ -746,6 +762,7 @@ function dbDelete(id) {
 // Location
 // ══════════════════════════════════════════
 let currentLocation = null;
+let currentLocationAccuracy = null;
 
 function getLocation() {
   return new Promise((res, rej) => {
@@ -753,10 +770,11 @@ function getLocation() {
     navigator.geolocation.getCurrentPosition(
       p => {
         currentLocation = { lat: p.coords.latitude, lng: p.coords.longitude };
+        currentLocationAccuracy = Number.isFinite(p.coords.accuracy) ? p.coords.accuracy : null;
         res(currentLocation);
       },
       e => rej(new Error('無法取得位置，請確認已允許定位權限')),
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   });
 }
@@ -783,34 +801,40 @@ const GOOGLE_API_KEY = 'YOUR_GOOGLE_PLACES_API_KEY';
 
 async function searchOverpass(lat, lng) {
   try {
-    const radius = 150;
+    const radius = 350;
     const query = `
-      [out:json][timeout:10];
+      [out:json][timeout:15];
       (
         node["amenity"~"restaurant|cafe|fast_food|food_court|bar|pub|ice_cream"](around:${radius},${lat},${lng});
+        way["amenity"~"restaurant|cafe|fast_food|food_court|bar|pub|ice_cream"](around:${radius},${lat},${lng});
+        relation["amenity"~"restaurant|cafe|fast_food|food_court|bar|pub|ice_cream"](around:${radius},${lat},${lng});
         node["shop"~"bakery|pastry|deli|convenience"](around:${radius},${lat},${lng});
+        way["shop"~"bakery|pastry|deli|convenience"](around:${radius},${lat},${lng});
         node["cuisine"](around:${radius},${lat},${lng});
+        way["cuisine"](around:${radius},${lat},${lng});
       );
-      out body 20;
+      out center tags;
     `;
     const res = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
-      body: query
+      body: query,
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' }
     });
+    if (!res.ok) return [];
     const data = await res.json();
     if (!data.elements || data.elements.length === 0) return [];
     return data.elements
       .filter(e => e.tags && e.tags.name)
       .map(e => ({
-        name: e.tags['name:zh'] || e.tags['name:zh-Hant'] || e.tags.name,
-        lat: e.lat,
-        lng: e.lon,
+        name: e.tags['name:zh-Hant'] || e.tags['name:zh'] || e.tags.name,
+        lat: e.lat ?? e.center?.lat,
+        lng: e.lon ?? e.center?.lon,
         phone: e.tags.phone || e.tags['contact:phone'] || '',
         address: e.tags['addr:full'] || e.tags['addr:street'] || ''
       }))
-      .filter(p => distanceM(lat, lng, p.lat, p.lng) <= 200)
+      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && distanceM(lat, lng, p.lat, p.lng) <= 400)
       .sort((a, b) => distanceM(lat, lng, a.lat, a.lng) - distanceM(lat, lng, b.lat, b.lng))
-      .slice(0, 8);
+      .slice(0, 12);
   } catch(e) {
     return [];
   }
@@ -972,6 +996,90 @@ function navigate() {
 // Add Sheet
 // ══════════════════════════════════════════
 let pendingLat = null, pendingLng = null;
+let originalPin = null;
+let locationMap = null;
+let locationMarker = null;
+let leafletLoadPromise = null;
+
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletLoadPromise) return leafletLoadPromise;
+  leafletLoadPromise = new Promise((resolve, reject) => {
+    if (!document.querySelector('link[data-leaflet]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      link.dataset.leaflet = 'true';
+      document.head.appendChild(link);
+    }
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = resolve;
+    script.onerror = () => {
+      leafletLoadPromise = null;
+      reject(new Error('地圖載入失敗'));
+    };
+    document.head.appendChild(script);
+  });
+  return leafletLoadPromise;
+}
+
+function updatePendingPoint(lat, lng) {
+  pendingLat = lat;
+  pendingLng = lng;
+  document.getElementById('coord-text').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if (locationMarker) locationMarker.setLatLng([lat, lng]);
+}
+
+async function toggleLocationMap() {
+  const panel = document.getElementById('location-map-panel');
+  const button = document.getElementById('location-map-toggle');
+  const opening = panel.style.display !== 'flex';
+  panel.style.display = opening ? 'flex' : 'none';
+  button.textContent = opening ? '🗺️ 收起地圖' : '🗺️ 在地圖上微調餐廳位置';
+  if (!opening) return;
+  if (pendingLat === null || pendingLng === null) {
+    showToast('請先選擇店家位置，或使用店名／地址搜尋');
+    panel.style.display = 'none';
+    button.textContent = '🗺️ 在地圖上微調餐廳位置';
+    return;
+  }
+  originalPin = { lat: pendingLat, lng: pendingLng };
+  try {
+    await loadLeaflet();
+    if (!locationMap) {
+      locationMap = L.map('location-map', { zoomControl: true }).setView([pendingLat, pendingLng], 18);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 20,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(locationMap);
+      locationMarker = L.marker([pendingLat, pendingLng], { draggable: true }).addTo(locationMap);
+      locationMarker.on('dragend', () => {
+        const p = locationMarker.getLatLng();
+        updatePendingPoint(p.lat, p.lng);
+      });
+      locationMap.on('click', event => {
+        locationMarker.setLatLng(event.latlng);
+        updatePendingPoint(event.latlng.lat, event.latlng.lng);
+      });
+    } else {
+      locationMap.setView([pendingLat, pendingLng], 18);
+      locationMarker.setLatLng([pendingLat, pendingLng]);
+    }
+    setTimeout(() => locationMap.invalidateSize(), 100);
+  } catch (e) {
+    panel.style.display = 'none';
+    button.textContent = '🗺️ 在地圖上微調餐廳位置';
+    showToast('地圖載入失敗，請確認網路後重試');
+  }
+}
+
+function resetLocationPin() {
+  if (!originalPin) return;
+  locationMarker.setLatLng([originalPin.lat, originalPin.lng]);
+  locationMap.setView([originalPin.lat, originalPin.lng], 18);
+  updatePendingPoint(originalPin.lat, originalPin.lng);
+}
 
 let addMode = 'gps';
 
@@ -1029,10 +1137,7 @@ async function startAddFlow() {
   showAddStep('gps');
   try {
     const loc = await getLocation();
-    pendingLat = loc.lat;
-    pendingLng = loc.lng;
-    document.getElementById('coord-text').textContent =
-      `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+    updatePendingPoint(loc.lat, loc.lng);
 
     const places = await searchNearbyPlaces(loc.lat, loc.lng);
     renderPlacesList(places);
@@ -1088,6 +1193,7 @@ function renderPlacesList(places) {
 }
 
 function selectPlace(p) {
+  if (Number.isFinite(p.lat) && Number.isFinite(p.lng)) updatePendingPoint(p.lat, p.lng);
   document.getElementById('input-name').value = p.name;
   document.getElementById('input-phone').value = p.phone || '';
   document.getElementById('input-breakfast').checked = false;
