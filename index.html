@@ -353,6 +353,15 @@
     .location-map-note { font-size:12px; color:var(--ink-3); line-height:1.5; }
     .location-map-reset { align-self:flex-start; background:none; border:0; color:var(--orange-d); font-size:13px; font-weight:600; padding:4px 0; cursor:pointer; }
 
+    .place-search-options { display:flex; gap:8px; }
+    .place-search-option {
+      flex:1; padding:10px 8px; border:1.5px solid var(--border);
+      border-radius:var(--radius-sm); background:var(--bg); color:var(--ink-2);
+      font-size:14px; font-weight:700; cursor:pointer;
+    }
+    .place-search-option.active { border-color:var(--orange); background:var(--orange-l); color:var(--orange-d); }
+    .place-search-note { font-size:12px; color:var(--ink-3); line-height:1.5; }
+
     .btn-primary {
       display: flex; align-items: center; justify-content: center; gap: 8px;
       background: linear-gradient(135deg, var(--orange) 0%, var(--orange-d) 100%);
@@ -553,7 +562,7 @@
       <div style="font-size:13px;color:var(--ink-3);margin-top:-8px">輸入店名或地址，從結果選取正確位置</div>
       <div style="display:flex;gap:8px">
         <input class="form-input" id="place-search-input" type="text"
-          placeholder="例如：大田鴨肉飯 花蓮"
+          placeholder="例如：大田鴨肉飯"
           style="flex:1"
           onkeydown="if(event.key==='Enter')doPlaceSearch()" />
         <button onclick="doPlaceSearch()" style="
@@ -562,6 +571,15 @@
           font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;
           min-height:48px;
         ">搜尋</button>
+      </div>
+      <div class="place-search-options" role="group" aria-label="搜尋範圍">
+        <button class="place-search-option active" id="search-scope-nearby" type="button" aria-pressed="true" onclick="setPlaceSearchScope('nearby')">📍 附近 25 km</button>
+        <button class="place-search-option" id="search-scope-taiwan" type="button" aria-pressed="false" onclick="setPlaceSearchScope('taiwan')">🌏 全台搜尋</button>
+      </div>
+      <div class="place-search-note" id="place-search-note">預設只找目前位置附近的店家；搜尋範圍與位置會傳送給 OpenStreetMap。</div>
+      <div id="place-area-fallback" style="display:none">
+        <label class="form-label" for="place-search-area">搜尋地區（目前無法取得定位時）</label>
+        <input class="form-input" id="place-search-area" type="text" placeholder="例如：花蓮市、台中市西區" />
       </div>
       <div id="place-search-results" style="display:flex;flex-direction:column;gap:10px">
         <div style="text-align:center;padding:24px;color:var(--ink-3)">
@@ -632,22 +650,73 @@
 <script>
 
 // ══════════════════════════════════════════
-// Nominatim 店家搜尋（OpenStreetMap，免費）
+// Nominatim 店家搜尋（OpenStreetMap）
 // ══════════════════════════════════════════
+let placeSearchScope = 'nearby';
+
+function setPlaceSearchScope(scope) {
+  placeSearchScope = scope;
+  const nearby = scope === 'nearby';
+  document.getElementById('search-scope-nearby').classList.toggle('active', nearby);
+  document.getElementById('search-scope-taiwan').classList.toggle('active', !nearby);
+  document.getElementById('search-scope-nearby').setAttribute('aria-pressed', String(nearby));
+  document.getElementById('search-scope-taiwan').setAttribute('aria-pressed', String(!nearby));
+  document.getElementById('place-search-note').textContent = nearby
+    ? '預設只找目前位置附近 25 公里的店家；搜尋範圍與位置會傳送給 OpenStreetMap。'
+    : '全台搜尋可能列出遠方同名店家；請依地址確認，並留意與目前位置的距離。';
+}
+
+function makeSearchViewbox(center, radiusM = 25000) {
+  const latDelta = radiusM / 111320;
+  const lngDelta = radiusM / (111320 * Math.cos(center.lat * Math.PI / 180));
+  return [center.lng - lngDelta, center.lat + latDelta, center.lng + lngDelta, center.lat - latDelta].join(',');
+}
+
 async function doPlaceSearch() {
-  const q = document.getElementById('place-search-input').value.trim();
-  if (!q) return;
+  const rawQuery = document.getElementById('place-search-input').value.trim();
+  if (!rawQuery) return;
+  const area = document.getElementById('place-search-area').value.trim();
   const container = document.getElementById('place-search-results');
-  container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:14px">搜尋中…</div></div>`;
+
+  if (placeSearchScope === 'nearby' && !currentLocation && !area) {
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">目前沒有可用定位。請填搜尋地區（例如花蓮市），或切換「全台搜尋」。</div>';
+    return;
+  }
+
+  container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:14px">搜尋中…</div></div>';
 
   try {
-    // 用 Nominatim 搜尋，限制台灣地區，優先回傳餐廳/店家
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&countrycodes=tw&addressdetails=1&accept-language=zh-TW,zh`;
-    const res = await fetch(url, { headers: { 'Accept-Language': 'zh-TW,zh' } });
+    const query = area ? `${rawQuery}, ${area}` : rawQuery;
+    const params = new URLSearchParams({
+      q: query,
+      format: 'jsonv2',
+      limit: '8',
+      countrycodes: 'tw',
+      addressdetails: '1',
+      namedetails: '1',
+      layer: 'poi',
+      'accept-language': 'zh-TW,zh'
+    });
+    if (placeSearchScope === 'nearby' && currentLocation) {
+      params.set('viewbox', makeSearchViewbox(currentLocation));
+      params.set('bounded', '1');
+    }
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+      headers: { 'Accept-Language': 'zh-TW,zh' }
+    });
+    if (!res.ok) throw new Error('search service unavailable');
     const data = await res.json();
 
     if (!data.length) {
-      container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)"><div style="font-size:32px;margin-bottom:8px">😅</div><div style="font-size:14px">找不到「${q}」，試試加上縣市名稱</div></div>`;
+      if (placeSearchScope === 'nearby') {
+        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">
+          <div style="font-size:32px;margin-bottom:8px">😅</div>
+          <div style="font-size:14px;margin-bottom:12px">附近 25 公里內找不到「${rawQuery}」的店家資料。</div>
+          <button class="place-search-option" type="button" onclick="setPlaceSearchScope('taiwan');doPlaceSearch()">改為全台搜尋</button>
+        </div>`;
+      } else {
+        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">找不到「${rawQuery}」，可補上縣市或鄉鎮名稱再試一次。</div>`;
+      }
       return;
     }
 
@@ -655,21 +724,32 @@ async function doPlaceSearch() {
     data.forEach(item => {
       const name = item.namedetails?.name || item.display_name.split(',')[0];
       const addr = item.display_name;
-      const lat = parseFloat(item.lat);
-      const lng = parseFloat(item.lon);
+      const lat = Number.parseFloat(item.lat);
+      const lng = Number.parseFloat(item.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
       const el = document.createElement('div');
       el.className = 'place-item';
-      el.innerHTML = `
-        <div class="place-icon">📍</div>
-        <div style="min-width:0">
-          <div class="place-name">${name}</div>
-          <div class="place-sub" style="white-space:normal;line-height:1.4">${addr}</div>
-        </div>`;
+      const icon = document.createElement('div');
+      icon.className = 'place-icon';
+      icon.textContent = '📍';
+      const info = document.createElement('div');
+      info.style.minWidth = '0';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'place-name';
+      nameEl.textContent = name;
+      const sub = document.createElement('div');
+      sub.className = 'place-sub';
+      sub.style.whiteSpace = 'normal';
+      sub.style.lineHeight = '1.4';
+      const distance = currentLocation
+        ? `距目前位置 ${formatDist(distanceM(currentLocation.lat, currentLocation.lng, lat, lng))} · `
+        : '';
+      sub.textContent = distance + addr;
+      info.append(nameEl, sub);
+      el.append(icon, info);
       el.onclick = () => {
-        pendingLat = lat;
-        pendingLng = lng;
-        document.getElementById('coord-text').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        updatePendingPoint(lat, lng);
         document.getElementById('input-name').value = name;
         document.getElementById('input-phone').value = '';
         document.getElementById('input-breakfast').checked = false;
@@ -679,8 +759,11 @@ async function doPlaceSearch() {
       };
       container.appendChild(el);
     });
+    if (!container.children.length) {
+      container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">找到的結果沒有可用座標，請試試加上縣市名稱。</div>';
+    }
   } catch(e) {
-    container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">搜尋失敗，請稍後再試</div>`;
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">搜尋服務暫時無法使用，請稍後再試。</div>';
   }
 }
 
@@ -1095,6 +1178,7 @@ function openAddSheet(mode = 'gps') {
     startAddFlow();
   } else {
     showAddStep('search');
+    document.getElementById('place-area-fallback').style.display = currentLocation ? 'none' : 'block';
     setTimeout(() => document.getElementById('place-search-input').focus(), 300);
   }
 }
