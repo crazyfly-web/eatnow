@@ -1436,6 +1436,7 @@ async function renderList() {
         <div class="row-info">
           <div class="row-name">${escapeHtml(r.name || 'Google Maps 店家')}${r.isBreakfast ? ' <span class="breakfast-tag">🌅 早</span>' : ''}</div>
           <div class="row-meta">${r.googlePlaceId ? `<a href="${googleMapsPlaceUrl(r.googlePlaceId)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:#1a73e8;text-decoration:none"><span translate="no">Google Maps</span></a>${(r.attributions || []).map(item => item && item.provider ? ` · ${item.providerUri && /^https:\/\//i.test(item.providerUri) ? `<a href="${escapeHtml(item.providerUri)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit">${escapeHtml(item.provider)}</a>` : escapeHtml(item.provider)}`).join('')}` : (r.phone ? `📞 ${escapeHtml(r.phone)}` : '尚未記錄電話')}</div>
+          ${r.googlePlaceId && r.address ? `<div class="row-meta">${escapeHtml(r.address)}</div>` : ''}
         </div>
         ${r.phone ? `<button class="row-call-btn" onclick="quickCall(event,'${r.phone}')">📞</button>` : ''}
       </div>`;
@@ -1481,7 +1482,7 @@ async function init() {
   await initDB();
   // 背景取得位置供排序用
   getLocation().catch(() => {});
-  renderList();
+  // Load Google Places details only when the user opens the list or starts a draw.
 }
 
 // ══════════════════════════════════════════
@@ -1585,7 +1586,7 @@ async function deleteFromEdit() {
   if (!confirm(`確定要刪除「${r.name || '這家店'}」嗎？`)) return;
   await dbDelete(editingId);
   closeEditSheet();
-  showToast(`已刪除「${r.name}」`);
+  showToast(`已刪除「${r.name || '這家店'}」`);
   renderList();
 }
 
