@@ -598,10 +598,10 @@
       </div>
       <div class="place-search-note" id="place-search-note">預設只找目前位置附近的店家；搜尋範圍與位置會傳送給 OpenStreetMap。</div>
       <a class="place-search-google" id="google-maps-search" href="https://www.google.com/maps/search/?api=1" target="_blank" rel="noopener noreferrer" onclick="return openGoogleMapsSearch(event)">🗺️ 找其他同名分店？用 Google Maps 搜尋</a>
-      <div class="place-search-note">會把店名與選填地區送到 Google Maps；這種連結不需 API 金鑰。</div>
-      <div id="place-area-fallback" style="display:none">
-        <label class="form-label" for="place-search-area">搜尋地區（目前無法取得定位時）</label>
-        <input class="form-input" id="place-search-area" type="text" placeholder="例如：花蓮市、台中市西區" />
+      <div class="place-search-note">只會把店名與你填寫的地區送到 Google Maps，不會傳送目前 GPS；不需 API 金鑰。</div>
+      <div id="place-area-fallback">
+        <label class="form-label" for="place-search-area">指定地區（選填，可縮小同名分店範圍）</label>
+        <input class="form-input" id="place-search-area" type="text" placeholder="例如：花蓮縣壽豐鄉慶豐村" oninput="updatePlaceSearchScopeNote()" />
       </div>
       <div id="place-search-results" style="display:flex;flex-direction:column;gap:10px">
         <div style="text-align:center;padding:24px;color:var(--ink-3)">
@@ -688,12 +688,22 @@ function openGoogleMapsSearch(event) {
   const url = new URL('https://www.google.com/maps/search/');
   url.searchParams.set('api', '1');
   url.searchParams.set('query', area ? `${rawQuery} ${area}` : rawQuery);
-  if (currentLocation) {
-    url.searchParams.set('center', `${currentLocation.lat},${currentLocation.lng}`);
-    url.searchParams.set('zoom', '14');
-  }
   event.currentTarget.href = url.toString();
   return true;
+}
+
+function updatePlaceSearchScopeNote() {
+  const area = document.getElementById('place-search-area').value.trim();
+  const note = document.getElementById('place-search-note');
+  if (placeSearchScope === 'nearby') {
+    note.textContent = area
+      ? `依指定地區「${area}」搜尋；搜尋內容會傳送給 OpenStreetMap。`
+      : currentLocation
+        ? '只列出目前位置直線 25 公里內的店家；位置會傳送給 OpenStreetMap。'
+        : '目前沒有定位，請填入搜尋地區，或切換「全台搜尋」。';
+  } else {
+    note.textContent = '全台搜尋可能列出遠方同名店家；請依地址確認，並留意與目前位置的距離。';
+  }
 }
 
 function setPlaceSearchScope(scope) {
@@ -703,11 +713,13 @@ function setPlaceSearchScope(scope) {
   document.getElementById('search-scope-taiwan').classList.toggle('active', !nearby);
   document.getElementById('search-scope-nearby').setAttribute('aria-pressed', String(nearby));
   document.getElementById('search-scope-taiwan').setAttribute('aria-pressed', String(!nearby));
-  document.getElementById('place-search-note').textContent = nearby
-    ? (currentLocation
-      ? '只列出目前位置直線 25 公里內的店家；搜尋範圍與位置會傳送給 OpenStreetMap。'
-      : '目前沒有定位時，請輸入縣市或鄉鎮，以店名加地區搜尋。')
-    : '全台搜尋可能列出遠方同名店家；請依地址確認，並留意與目前位置的距離。';
+  updatePlaceSearchScopeNote();
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
 }
 
 function makeSearchViewbox(center, radiusM = 25000) {
@@ -730,7 +742,7 @@ async function doPlaceSearch() {
   container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:14px">搜尋中…</div></div>';
 
   try {
-    const query = area ? `${rawQuery}, ${area}` : rawQuery;
+    const query = area ? `${escapeHtml(rawQuery)}, ${area}` : rawQuery;
     const params = new URLSearchParams({
       q: query,
       format: 'jsonv2',
@@ -741,7 +753,7 @@ async function doPlaceSearch() {
       layer: 'poi',
       'accept-language': 'zh-TW,zh'
     });
-    if (placeSearchScope === 'nearby' && currentLocation) {
+    if (placeSearchScope === 'nearby' && currentLocation && !area) {
       params.set('viewbox', makeSearchViewbox(currentLocation));
       params.set('bounded', '1');
     }
@@ -755,11 +767,11 @@ async function doPlaceSearch() {
       if (placeSearchScope === 'nearby') {
         container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">
           <div style="font-size:32px;margin-bottom:8px">😅</div>
-          <div style="font-size:14px;margin-bottom:12px">附近 25 公里內找不到「${rawQuery}」的店家資料。</div>
+          <div style="font-size:14px;margin-bottom:12px">${area ? `在「${escapeHtml(area)}」找不到「${escapeHtml(rawQuery)}」的店家資料。` : `附近 25 公里內找不到「${escapeHtml(rawQuery)}」的店家資料。`}</div>
           <button class="place-search-option" type="button" onclick="setPlaceSearchScope('taiwan');doPlaceSearch()">改為全台搜尋</button>
         </div>`;
       } else {
-        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">找不到「${rawQuery}」，可補上縣市或鄉鎮名稱再試一次。</div>`;
+        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">找不到「${escapeHtml(rawQuery)}」，可補上縣市或鄉鎮名稱再試一次。</div>`;
       }
       return;
     }
@@ -768,7 +780,7 @@ async function doPlaceSearch() {
       const lat = Number.parseFloat(item.lat);
       const lng = Number.parseFloat(item.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-      return !(placeSearchScope === 'nearby' && currentLocation &&
+      return !(placeSearchScope === 'nearby' && currentLocation && !area &&
         distanceM(currentLocation.lat, currentLocation.lng, lat, lng) > 25000);
     });
 
@@ -776,7 +788,7 @@ async function doPlaceSearch() {
       if (placeSearchScope === 'nearby') {
         container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">
           <div style="font-size:32px;margin-bottom:8px">😅</div>
-          <div style="font-size:14px;margin-bottom:12px">附近 25 公里內找不到「${rawQuery}」的店家資料。</div>
+          <div style="font-size:14px;margin-bottom:12px">附近 25 公里內找不到「${escapeHtml(rawQuery)}」的店家資料。</div>
           <button class="place-search-option" type="button" onclick="setPlaceSearchScope('taiwan');doPlaceSearch()">改為全台搜尋</button>
         </div>`;
       } else {
@@ -1197,7 +1209,8 @@ function openAddSheet(mode = 'gps') {
     startAddFlow();
   } else {
     showAddStep('search');
-    document.getElementById('place-area-fallback').style.display = currentLocation ? 'none' : 'block';
+    document.getElementById('place-area-fallback').style.display = 'block';
+    updatePlaceSearchScopeNote();
     setTimeout(() => document.getElementById('place-search-input').focus(), 300);
   }
 }
