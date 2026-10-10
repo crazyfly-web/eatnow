@@ -370,6 +370,15 @@
     }
     .place-search-option.active { border-color:var(--orange); background:var(--orange-l); color:var(--orange-d); }
     .place-search-note { font-size:12px; color:var(--ink-3); line-height:1.5; }
+    .google-place-item { align-items:flex-start; }
+    .google-place-info { flex:1; min-width:0; }
+    .google-place-attribution { color:#5e5e5e; font-size:12px; margin-top:8px; }
+    .google-place-attribution a { color:inherit; text-decoration:underline; }
+    .google-place-actions { display:flex; flex-direction:column; align-items:stretch; gap:6px; flex-shrink:0; }
+    .google-place-link { color:#1a73e8; text-align:center; text-decoration:none; font-size:13px; padding:4px; }
+    .google-place-add { border:0; border-radius:9px; background:var(--orange); color:white; font-size:13px; font-weight:700; padding:9px 11px; cursor:pointer; white-space:nowrap; }
+    .google-place-error { padding:16px; background:var(--orange-l); border-radius:var(--radius-sm); color:var(--ink-2); }
+    @media (max-width:380px) { .google-place-item { gap:8px; padding:10px; } .google-place-actions { width:72px; } .google-place-add { padding:8px 5px; } }
     .place-search-google {
       display:flex; align-items:center; justify-content:center; gap:8px;
       min-height:48px; padding:12px 14px;
@@ -513,7 +522,7 @@
       </button>
     </div>
     <div class="app-version" aria-label="網站版本">
-      EatNow 版本 <time datetime="2026-10-10">2026.10.10-r2</time>
+      EatNow 版本 <time datetime="2026-10-10">2026.10.10-r3</time>
     </div>
   </div>
 </div>
@@ -579,7 +588,7 @@
     <!-- Step 0b: Search by name -->
     <div id="step-0-search" class="sheet-body" style="display:none">
       <div style="font-size:16px;font-weight:700">搜尋店家</div>
-      <div style="font-size:13px;color:var(--ink-3);margin-top:-8px">輸入店名或地址，從結果選取正確位置</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-top:-8px">搜尋 Google Maps 店家，選對分店後直接加入口袋清單</div>
       <div style="display:flex;gap:8px">
         <input class="form-input" id="place-search-input" type="text"
           placeholder="例如：大田鴨肉飯"
@@ -592,13 +601,10 @@
           min-height:48px;
         ">搜尋</button>
       </div>
-      <div class="place-search-options" role="group" aria-label="搜尋範圍">
-        <button class="place-search-option active" id="search-scope-nearby" type="button" aria-pressed="true" onclick="setPlaceSearchScope('nearby')">📍 附近 25 km</button>
-        <button class="place-search-option" id="search-scope-taiwan" type="button" aria-pressed="false" onclick="setPlaceSearchScope('taiwan')">🌏 全台搜尋</button>
-      </div>
-      <div class="place-search-note" id="place-search-note">預設只找目前位置附近的店家；搜尋範圍與位置會傳送給 OpenStreetMap。</div>
-      <a class="place-search-google" id="google-maps-search" href="https://www.google.com/maps/search/?api=1" target="_blank" rel="noopener noreferrer" onclick="return openGoogleMapsSearch(event)">🗺️ 找其他同名分店？用 Google Maps 搜尋</a>
-      <div class="place-search-note">只會把店名與你填寫的地區送到 Google Maps，不會傳送目前 GPS；不需 API 金鑰。</div>
+      <div class="place-search-note" id="place-search-note">搜尋只會傳送店名與你填寫的地區給 Google Maps，不會使用目前 GPS。</div>
+      <div class="place-search-note"><span translate="no">Google Maps</span> 搜尋結果</div>
+      <a class="place-search-google" id="google-maps-search" href="https://www.google.com/maps/search/?api=1" target="_blank" rel="noopener noreferrer" onclick="return openGoogleMapsSearch(event)">在 Google Maps 開啟搜尋</a>
+      <div class="place-search-note">Google Maps 搜尋尚未設定時，仍可用上方連結查看結果。</div>
       <div id="place-area-fallback">
         <label class="form-label" for="place-search-area">指定地區（選填，可縮小同名分店範圍）</label>
         <input class="form-input" id="place-search-area" type="text" placeholder="例如：花蓮縣壽豐鄉慶豐村" oninput="updatePlaceSearchScopeNote()" />
@@ -693,17 +699,9 @@ function openGoogleMapsSearch(event) {
 }
 
 function updatePlaceSearchScopeNote() {
-  const area = document.getElementById('place-search-area').value.trim();
   const note = document.getElementById('place-search-note');
-  if (placeSearchScope === 'nearby') {
-    note.textContent = area
-      ? `依指定地區「${area}」搜尋；搜尋內容會傳送給 OpenStreetMap。`
-      : currentLocation
-        ? '只列出目前位置直線 25 公里內的店家；位置會傳送給 OpenStreetMap。'
-        : '目前沒有定位，請填入搜尋地區，或切換「全台搜尋」。';
-  } else {
-    note.textContent = '全台搜尋可能列出遠方同名店家；請依地址確認，並留意與目前位置的距離。';
-  }
+  if (!note) return;
+  note.textContent = '搜尋只會傳送店名與你填寫的地區給 Google Maps，不會使用目前 GPS。';
 }
 
 function setPlaceSearchScope(scope) {
@@ -728,118 +726,168 @@ function makeSearchViewbox(center, radiusM = 25000) {
   return [center.lng - lngDelta, center.lat + latDelta, center.lng + lngDelta, center.lat - latDelta].join(',');
 }
 
+const googlePlaceMemoryCache = new Map();
+
+function googleMapsPlaceUrl(placeId) {
+  return `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(placeId)}`;
+}
+
+async function getGooglePlaceDetails(placeId) {
+  if (googlePlaceMemoryCache.has(placeId)) return googlePlaceMemoryCache.get(placeId);
+  const response = await fetch(`/api/place-details?id=${encodeURIComponent(placeId)}`, {
+    headers: { Accept: 'application/json' }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Google Maps 店家資訊暫時無法載入');
+  googlePlaceMemoryCache.set(placeId, data.place);
+  return data.place;
+}
+
+async function getRestaurantRecords() {
+  const records = await dbGetAll();
+  return Promise.all(records.map(async record => {
+    if (!record.googlePlaceId) return record;
+    try {
+      const place = await getGooglePlaceDetails(record.googlePlaceId);
+      return {
+        ...record,
+        name: record.userNameOverride || place.name,
+        lat: place.lat,
+        lng: place.lng,
+        phone: record.userPhoneOverride || '',
+        googlePlace: true,
+        googleMapsUri: place.googleMapsUri,
+        attributions: place.attributions || []
+      };
+    } catch (error) {
+      return {
+        ...record,
+        name: record.userNameOverride || 'Google Maps 店家資訊暫時無法載入',
+        lat: null,
+        lng: null,
+        phone: record.userPhoneOverride || '',
+        googlePlace: true,
+        googlePlaceUnavailable: true
+      };
+    }
+  }));
+}
+
+async function addGooglePlaceToList(place) {
+  const records = await dbGetAll();
+  if (records.some(record => record.googlePlaceId === place.id)) {
+    showToast('這家店已在口袋清單中');
+    return;
+  }
+  // Google Maps content is kept in memory only; IndexedDB stores the exempt Place ID and user choices.
+  googlePlaceMemoryCache.set(place.id, place);
+  await dbPut({
+    id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+    googlePlaceId: place.id,
+    stars: 0,
+    isBreakfast: false,
+    createdAt: Date.now()
+  });
+  closeAddSheet();
+  showToast(`已加入「${place.name}」✅`);
+  renderList();
+}
+
+function addGooglePlaceAttributions(target, attributions = []) {
+  const line = document.createElement('div');
+  line.className = 'place-sub google-place-attribution';
+  const google = document.createElement('span');
+  google.textContent = 'Google Maps';
+  google.setAttribute('translate', 'no');
+  line.appendChild(google);
+  for (const item of attributions) {
+    if (!item || !item.provider) continue;
+    const separator = document.createTextNode(' · ');
+    line.appendChild(separator);
+    if (item.providerUri && /^https:\/\//i.test(item.providerUri)) {
+      const link = document.createElement('a');
+      link.href = item.providerUri;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = item.provider;
+      line.appendChild(link);
+    } else {
+      line.appendChild(document.createTextNode(item.provider));
+    }
+  }
+  target.appendChild(line);
+}
+
 async function doPlaceSearch() {
   const rawQuery = document.getElementById('place-search-input').value.trim();
   if (!rawQuery) return;
   const area = document.getElementById('place-search-area').value.trim();
   const container = document.getElementById('place-search-results');
-
-  if (placeSearchScope === 'nearby' && !currentLocation && !area) {
-    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">目前沒有可用定位。請填搜尋地區（例如花蓮市），或切換「全台搜尋」。</div>';
-    return;
-  }
-
-  container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:14px">搜尋中…</div></div>';
+  container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:14px">搜尋 Google Maps 店家…</div></div>';
 
   try {
-    const query = area ? `${rawQuery}, ${area}` : rawQuery;
-    const params = new URLSearchParams({
-      q: query,
-      format: 'jsonv2',
-      limit: '8',
-      countrycodes: 'tw',
-      addressdetails: '1',
-      namedetails: '1',
-      layer: 'poi',
-      'accept-language': 'zh-TW,zh'
+    const response = await fetch('/api/places-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ query: rawQuery, area })
     });
-    if (placeSearchScope === 'nearby' && currentLocation && !area) {
-      params.set('viewbox', makeSearchViewbox(currentLocation));
-      params.set('bounded', '1');
-    }
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-      headers: { 'Accept-Language': 'zh-TW,zh' }
-    });
-    if (!res.ok) throw new Error('search service unavailable');
-    const data = await res.json();
-
-    if (!data.length) {
-      if (placeSearchScope === 'nearby') {
-        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">
-          <div style="font-size:32px;margin-bottom:8px">😅</div>
-          <div style="font-size:14px;margin-bottom:12px">${area ? `在「${escapeHtml(area)}」找不到「${escapeHtml(rawQuery)}」的店家資料。` : `附近 25 公里內找不到「${escapeHtml(rawQuery)}」的店家資料。`}</div>
-          <button class="place-search-option" type="button" onclick="setPlaceSearchScope('taiwan');doPlaceSearch()">改為全台搜尋</button>
-        </div>`;
-      } else {
-        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">找不到「${escapeHtml(rawQuery)}」，可補上縣市或鄉鎮名稱再試一次。</div>`;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (data.code === 'API_KEY_MISSING') {
+        throw new Error('Google Maps API 尚未設定。請在 Cloudflare Pages 專案新增 GOOGLE_MAPS_API_KEY Secret 後重新部署。');
       }
+      throw new Error(data.error || 'Google Maps 搜尋暫時無法使用，請稍後再試。');
+    }
+
+    const places = Array.isArray(data.places) ? data.places : [];
+    if (!places.length) {
+      container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">Google Maps 找不到符合的店家。試著補上縣市、鄉鎮或分店名稱。</div>';
       return;
     }
 
-    const candidates = data.filter(item => {
-      const lat = Number.parseFloat(item.lat);
-      const lng = Number.parseFloat(item.lon);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-      return !(placeSearchScope === 'nearby' && currentLocation && !area &&
-        distanceM(currentLocation.lat, currentLocation.lng, lat, lng) > 25000);
-    });
-
-    if (!candidates.length) {
-      if (placeSearchScope === 'nearby') {
-        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">
-          <div style="font-size:32px;margin-bottom:8px">😅</div>
-          <div style="font-size:14px;margin-bottom:12px">${area ? `在「${escapeHtml(area)}」找不到「${escapeHtml(rawQuery)}」的店家資料。` : `附近 25 公里內找不到「${escapeHtml(rawQuery)}」的店家資料。`}</div>
-          <button class="place-search-option" type="button" onclick="setPlaceSearchScope('taiwan');doPlaceSearch()">改為全台搜尋</button>
-        </div>`;
-      } else {
-        container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">找到的結果沒有可用座標，請試試加上縣市名稱。</div>';
-      }
-      return;
-    }
-
-    container.innerHTML = '';
-    candidates.forEach(item => {
-      const name = item.namedetails?.name || item.display_name.split(',')[0];
-      const addr = item.display_name;
-      const lat = Number.parseFloat(item.lat);
-      const lng = Number.parseFloat(item.lon);
-
-      const el = document.createElement('div');
-      el.className = 'place-item';
+    container.replaceChildren();
+    for (const place of places) {
+      googlePlaceMemoryCache.set(place.id, place);
+      const card = document.createElement('div');
+      card.className = 'place-item google-place-item';
       const icon = document.createElement('div');
       icon.className = 'place-icon';
       icon.textContent = '📍';
       const info = document.createElement('div');
-      info.style.minWidth = '0';
-      const nameEl = document.createElement('div');
-      nameEl.className = 'place-name';
-      nameEl.textContent = name;
-      const sub = document.createElement('div');
-      sub.className = 'place-sub';
-      sub.style.whiteSpace = 'normal';
-      sub.style.lineHeight = '1.4';
-      const distance = currentLocation
-        ? `距目前位置 ${formatDist(distanceM(currentLocation.lat, currentLocation.lng, lat, lng))} · `
-        : '';
-      sub.textContent = distance + addr;
-      info.append(nameEl, sub);
-      el.append(icon, info);
-      el.onclick = () => {
-        updatePendingPoint(lat, lng);
-        document.getElementById('input-name').value = name;
-        document.getElementById('input-phone').value = '';
-        document.getElementById('input-breakfast').checked = false;
-        currentStars = 0;
-        for (let i = 1; i <= 3; i++) document.getElementById(`star-${i}`).classList.remove('active');
-        showAddStep('edit');
-      };
-      container.appendChild(el);
-    });
-    if (!container.children.length) {
-      container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">找到的結果沒有可用座標，請試試加上縣市名稱。</div>';
+      info.className = 'google-place-info';
+      const name = document.createElement('div');
+      name.className = 'place-name';
+      name.textContent = place.name;
+      const address = document.createElement('div');
+      address.className = 'place-sub';
+      address.style.whiteSpace = 'normal';
+      address.style.lineHeight = '1.4';
+      address.textContent = place.address || '地址未提供';
+      info.append(name, address);
+      addGooglePlaceAttributions(info, place.attributions);
+      const actions = document.createElement('div');
+      actions.className = 'google-place-actions';
+      const mapLink = document.createElement('a');
+      mapLink.className = 'google-place-link';
+      mapLink.href = place.googleMapsUri || googleMapsPlaceUrl(place.id);
+      mapLink.target = '_blank';
+      mapLink.rel = 'noopener noreferrer';
+      mapLink.textContent = '查看';
+      mapLink.addEventListener('click', event => event.stopPropagation());
+      const addButton = document.createElement('button');
+      addButton.className = 'google-place-add';
+      addButton.type = 'button';
+      addButton.textContent = '加入清單';
+      addButton.addEventListener('click', () => addGooglePlaceToList(place));
+      actions.append(mapLink, addButton);
+      card.append(icon, info, actions);
+      container.appendChild(card);
     }
-  } catch(e) {
-    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)">搜尋服務暫時無法使用，請稍後再試。</div>';
+  } catch (error) {
+    const message = document.createElement('div');
+    message.className = 'place-search-note google-place-error';
+    message.textContent = error.message || 'Google Maps 搜尋暫時無法使用，請稍後再試。';
+    container.replaceChildren(message);
   }
 }
 
@@ -1021,10 +1069,11 @@ async function startDecision() {
 
   try {
     const loc = await getLocation();
-    const all = await dbGetAll();
+    const all = await getRestaurantRecords();
     const includeBreakfast = document.getElementById('toggle-breakfast').checked;
 
     const filtered = all.filter(r => {
+      if (!Number.isFinite(r.lat) || !Number.isFinite(r.lng)) return false;
       const d = distanceM(loc.lat, loc.lng, r.lat, r.lng);
       const breakfastOk = includeBreakfast ? true : !r.isBreakfast;
       return d <= currentRange && breakfastOk;
@@ -1345,9 +1394,9 @@ async function saveRestaurant() {
 // ══════════════════════════════════════════
 async function renderList() {
   const query = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
-  let all = await dbGetAll();
+  let all = await getRestaurantRecords();
 
-  if (query) all = all.filter(r => r.name.toLowerCase().includes(query));
+  if (query) all = all.filter(r => (r.name || '').toLowerCase().includes(query));
 
   // 依距離排序
   if (currentLocation) {
@@ -1372,7 +1421,7 @@ async function renderList() {
   countEl.textContent = `共 ${all.length} 家店`;
 
   container.innerHTML = all.map(r => {
-    const d = currentLocation
+    const d = currentLocation && Number.isFinite(r.lat) && Number.isFinite(r.lng)
       ? distanceM(currentLocation.lat, currentLocation.lng, r.lat, r.lng)
       : null;
     const distLabel = d !== null ? formatDist(d) : '--';
@@ -1385,8 +1434,8 @@ async function renderList() {
           <div style="font-size:10px">${nearby ? '📍' : '🗺️'}</div>
         </div>
         <div class="row-info">
-          <div class="row-name">${r.name}${r.isBreakfast ? ' <span class="breakfast-tag">🌅 早</span>' : ''}</div>
-          <div class="row-meta">${r.phone ? `📞 ${r.phone}` : '尚未記錄電話'}</div>
+          <div class="row-name">${escapeHtml(r.name || 'Google Maps 店家')}${r.isBreakfast ? ' <span class="breakfast-tag">🌅 早</span>' : ''}</div>
+          <div class="row-meta">${r.googlePlaceId ? `<a href="${googleMapsPlaceUrl(r.googlePlaceId)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:#1a73e8;text-decoration:none"><span translate="no">Google Maps</span></a>` : (r.phone ? `📞 ${escapeHtml(r.phone)}` : '尚未記錄電話')}</div>
         </div>
         ${r.phone ? `<button class="row-call-btn" onclick="quickCall(event,'${r.phone}')">📞</button>` : ''}
       </div>`;
@@ -1438,7 +1487,7 @@ let editingId = null;
 let editStars = 0;
 
 function openEditSheet(id) {
-  dbGetAll().then(all => {
+  getRestaurantRecords().then(all => {
     const r = all.find(x => x.id === id);
     if (!r) return;
     editingId = id;
@@ -1448,7 +1497,7 @@ function openEditSheet(id) {
     document.getElementById('edit-input-phone').value = r.phone || '';
     document.getElementById('edit-input-breakfast').checked = r.isBreakfast || false;
     document.getElementById('edit-coord-text').textContent =
-      `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}`;
+      Number.isFinite(r.lat) && Number.isFinite(r.lng) ? `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}` : 'Google Maps 店家資訊需連線載入';
 
     // Set stars
     for (let i = 1; i <= 3; i++) {
@@ -1484,10 +1533,19 @@ async function saveEditRestaurant() {
   const r = all.find(x => x.id === editingId);
   if (!r) return;
 
-  const updated = {
+  const phone = document.getElementById('edit-input-phone').value.trim();
+  const updated = r.googlePlaceId ? {
+    id: r.id,
+    googlePlaceId: r.googlePlaceId,
+    userNameOverride: name,
+    userPhoneOverride: phone,
+    stars: editStars,
+    isBreakfast: document.getElementById('edit-input-breakfast').checked,
+    createdAt: r.createdAt
+  } : {
     ...r,
     name,
-    phone: document.getElementById('edit-input-phone').value.trim(),
+    phone,
     stars: editStars,
     isBreakfast: document.getElementById('edit-input-breakfast').checked,
   };
@@ -1503,7 +1561,7 @@ async function deleteFromEdit() {
   const all = await dbGetAll();
   const r = all.find(x => x.id === editingId);
   if (!r) return;
-  if (!confirm(`確定要刪除「${r.name}」嗎？`)) return;
+  if (!confirm(`確定要刪除「${r.name || '這家店'}」嗎？`)) return;
   await dbDelete(editingId);
   closeEditSheet();
   showToast(`已刪除「${r.name}」`);
