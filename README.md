@@ -27,7 +27,7 @@ EatNow 是一個手機優先的單頁餐廳口袋名單。正式網站：https:/
 
 ## Google Maps 搜尋
 
-- 搜尋視窗提供 Google Maps 搜尋連結，可把店名與目前位置傳到 Google Maps 查看同名分店；此連結不需要 API 金鑰，也不會把 Google Maps 候選資料帶回 EatNow。
+- 搜尋視窗提供 Google Maps 搜尋連結，可把店名與自行填寫的地區送到 Google Maps 查看同名分店；不會附上目前 GPS，也不需要 API 金鑰。Google Maps 的搜尋結果不會自動帶回 EatNow。
 - 若改成在 EatNow 內顯示 Google Places 搜尋結果，應透過 Cloudflare Pages Function 呼叫 Places API，將金鑰存為伺服器端 Secret，並設定 API 限制、配額與預算告警。
 - Places API 有資料保存與地圖呈現規範；目前 EatNow 將店家資料存在 IndexedDB 並用 Leaflet/OpenStreetMap 顯示，因此不能直接長期保存 Google 回傳的地址／座標或把它顯示在 OSM 地圖上。Place ID 可保存，完整整合前需設計符合規範的資料流程。
 
