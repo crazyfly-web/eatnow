@@ -742,7 +742,7 @@ async function doPlaceSearch() {
   container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink-3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:14px">搜尋中…</div></div>';
 
   try {
-    const query = area ? `${escapeHtml(rawQuery)}, ${area}` : rawQuery;
+    const query = area ? `${rawQuery}, ${area}` : rawQuery;
     const params = new URLSearchParams({
       q: query,
       format: 'jsonv2',
@@ -788,7 +788,7 @@ async function doPlaceSearch() {
       if (placeSearchScope === 'nearby') {
         container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--ink-3)">
           <div style="font-size:32px;margin-bottom:8px">😅</div>
-          <div style="font-size:14px;margin-bottom:12px">附近 25 公里內找不到「${escapeHtml(rawQuery)}」的店家資料。</div>
+          <div style="font-size:14px;margin-bottom:12px">${area ? `在「${escapeHtml(area)}」找不到「${escapeHtml(rawQuery)}」的店家資料。` : `附近 25 公里內找不到「${escapeHtml(rawQuery)}」的店家資料。`}</div>
           <button class="place-search-option" type="button" onclick="setPlaceSearchScope('taiwan');doPlaceSearch()">改為全台搜尋</button>
         </div>`;
       } else {
