@@ -25,11 +25,13 @@ EatNow 是一個手機優先的單頁餐廳口袋名單。正式網站：https:/
 - 首頁最下方顯示日期版本（YYYY.MM.DD-rN）；日期以實際上線日為準，同一天的後續發布遞增 rN。
 - 每次發布正式更新時，請同步更新 `index.html` 中的版本標記。
 
-## Google Maps 搜尋
+## Google Maps 搜尋與口袋清單
 
-- 搜尋視窗提供 Google Maps 搜尋連結，可把店名與自行填寫的地區送到 Google Maps 查看同名分店；不會附上目前 GPS，也不需要 API 金鑰。Google Maps 的搜尋結果不會自動帶回 EatNow。
-- 若改成在 EatNow 內顯示 Google Places 搜尋結果，應透過 Cloudflare Pages Function 呼叫 Places API，將金鑰存為伺服器端 Secret，並設定 API 限制、配額與預算告警。
-- Places API 有資料保存與地圖呈現規範；目前 EatNow 將店家資料存在 IndexedDB 並用 Leaflet/OpenStreetMap 顯示，因此不能直接長期保存 Google 回傳的地址／座標或把它顯示在 OSM 地圖上。Place ID 可保存，完整整合前需設計符合規範的資料流程。
+- 搜尋店名時，網站以 Google Places API (New) Text Search 顯示候選分店；搜尋只送出店名及使用者自行輸入的地區，不讀取或傳送瀏覽器 GPS。
+- 按「加入清單」即可將正確分店加入本機口袋名單。IndexedDB 只保存 Google Place ID 和使用者自己的收藏設定；店名、地址與座標透過 Place Details 即時取得並留在記憶體，不寫入持久儲存。
+- Google Maps 來源的店家顯示 Google Maps attribution 與 Google Maps 連結，不會放到 OpenStreetMap 圖層上。
+- Google Places API 金鑰必須設為 Cloudflare Pages 的 Secret，變數名稱為 `GOOGLE_MAPS_API_KEY`；不得寫入 GitHub、HTML 或前端 JavaScript。需要啟用 Places API (New) 與 Google Cloud Billing。搜尋與店家資訊查詢會使用 Google Maps Platform 用量；在啟用前先查看目前價格、API 配額，並設定預算告警。
+- 本機開發可在 `.dev.vars` 加入 `GOOGLE_MAPS_API_KEY=...`（此檔必須被 Git 忽略）。
 
 ## 主要功能
 
