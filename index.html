@@ -1428,7 +1428,7 @@ async function renderList() {
     const nearby = d !== null && d <= 500;
 
     return `
-      <div class="restaurant-row" oncontextmenu="confirmDelete('${r.id}','${r.name}',event)" onclick="rowTap('${r.id}')">
+      <div class="restaurant-row" oncontextmenu="confirmDelete('${r.id}',event)" onclick="rowTap('${r.id}')">
         <div class="row-dist-badge ${nearby ? 'nearby' : 'far'}">
           <div class="row-dist-num">${distLabel}</div>
           <div style="font-size:10px">${nearby ? '📍' : '🗺️'}</div>
@@ -1451,11 +1451,15 @@ function rowTap(id) {
   openEditSheet(id);
 }
 
-function confirmDelete(id, name, e) {
+function confirmDelete(id, e) {
   e.preventDefault();
-  if (confirm(`確定要刪除「${name}」嗎？`)) {
-    dbDelete(id).then(() => { showToast(`已刪除「${name}」`); renderList(); });
-  }
+  getRestaurantRecords().then(all => {
+    const record = all.find(item => item.id === id);
+    const name = record?.name || '這家店';
+    if (confirm(`確定要刪除「${name}」嗎？`)) {
+      dbDelete(id).then(() => { showToast(`已刪除「${name}」`); renderList(); });
+    }
+  });
 }
 
 // ══════════════════════════════════════════
@@ -1484,6 +1488,7 @@ async function init() {
 // Edit Sheet
 // ══════════════════════════════════════════
 let editingId = null;
+let editingGoogleResolvedName = '';
 let editStars = 0;
 
 function openEditSheet(id) {
@@ -1491,6 +1496,7 @@ function openEditSheet(id) {
     const r = all.find(x => x.id === id);
     if (!r) return;
     editingId = id;
+    editingGoogleResolvedName = r.googlePlaceId ? (r.name || '') : '';
     editStars = r.stars || 0;
 
     document.getElementById('edit-input-name').value = r.name;
@@ -1511,6 +1517,7 @@ function openEditSheet(id) {
 function closeEditSheet() {
   document.getElementById('edit-sheet-overlay').classList.remove('open');
   editingId = null;
+  editingGoogleResolvedName = '';
 }
 
 function handleEditOverlayClick(e) {
@@ -1534,21 +1541,27 @@ async function saveEditRestaurant() {
   if (!r) return;
 
   const phone = document.getElementById('edit-input-phone').value.trim();
-  const updated = r.googlePlaceId ? {
-    id: r.id,
-    googlePlaceId: r.googlePlaceId,
-    userNameOverride: name,
-    userPhoneOverride: phone,
-    stars: editStars,
-    isBreakfast: document.getElementById('edit-input-breakfast').checked,
-    createdAt: r.createdAt
-  } : {
-    ...r,
-    name,
-    phone,
-    stars: editStars,
-    isBreakfast: document.getElementById('edit-input-breakfast').checked,
-  };
+  let updated;
+  if (r.googlePlaceId) {
+    updated = {
+      id: r.id,
+      googlePlaceId: r.googlePlaceId,
+      stars: editStars,
+      isBreakfast: document.getElementById('edit-input-breakfast').checked,
+      createdAt: r.createdAt
+    };
+    if (name !== editingGoogleResolvedName) updated.userNameOverride = name;
+    else if (r.userNameOverride) updated.userNameOverride = r.userNameOverride;
+    if (phone) updated.userPhoneOverride = phone;
+  } else {
+    updated = {
+      ...r,
+      name,
+      phone,
+      stars: editStars,
+      isBreakfast: document.getElementById('edit-input-breakfast').checked,
+    };
+  }
 
   await dbPut(updated);
   closeEditSheet();
