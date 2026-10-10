@@ -491,6 +491,7 @@
       <div class="result-card" id="result-card">
         <div id="result-breakfast-tag" class="result-tag" style="display:none">🌅 早餐店</div>
         <div class="result-name" id="result-name">—</div>
+        <div id="result-google-attribution" class="google-place-attribution" style="display:none"></div>
         <div class="result-stars" id="result-stars"></div>
         <div class="result-dist" id="result-dist">📍 —</div>
         <div class="result-actions">
@@ -1103,6 +1104,11 @@ function showResult() {
   const d = loc ? formatDist(distanceM(loc.lat, loc.lng, r.lat, r.lng)) : '—';
 
   document.getElementById('result-name').textContent = r.name;
+  const googleAttribution = document.getElementById('result-google-attribution');
+  googleAttribution.style.display = r.googlePlaceId ? 'block' : 'none';
+  googleAttribution.innerHTML = r.googlePlaceId
+    ? `<a href="${googleMapsPlaceUrl(r.googlePlaceId)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline"><span translate="no">Google Maps</span></a>${googleAttributionsHtml(r.attributions)}`
+    : '';
   document.getElementById('result-dist').textContent = `📍 ${d}`;
   document.getElementById('result-stars').textContent = r.stars ? '⭐'.repeat(r.stars) : '';
 
@@ -1519,8 +1525,9 @@ function openEditSheet(id) {
     document.getElementById('edit-input-name').value = r.name;
     document.getElementById('edit-input-phone').value = r.phone || '';
     document.getElementById('edit-input-breakfast').checked = r.isBreakfast || false;
-    document.getElementById('edit-coord-text').textContent =
-      Number.isFinite(r.lat) && Number.isFinite(r.lng) ? `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}` : 'Google Maps 店家資訊需連線載入';
+    document.getElementById('edit-coord-text').textContent = r.googlePlaceId
+      ? 'Google Maps 店家位置'
+      : (Number.isFinite(r.lat) && Number.isFinite(r.lng) ? `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}` : '店家位置需連線載入');
 
     // Set stars
     for (let i = 1; i <= 3; i++) {
