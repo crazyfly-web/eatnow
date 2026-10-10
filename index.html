@@ -752,6 +752,7 @@ async function getRestaurantRecords() {
       return {
         ...record,
         name: record.userNameOverride || place.name,
+        address: place.address || '',
         lat: place.lat,
         lng: place.lng,
         phone: record.userPhoneOverride || '',
